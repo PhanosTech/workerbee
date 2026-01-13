@@ -1,0 +1,44 @@
+version: '3'
+
+vars:
+  NODE_BIN: /opt/tools/node/bin
+  NODE: '{{.NODE_BIN}}/node'
+  NPM: '{{.NODE_BIN}}/npm'
+  NPX: '{{.NODE_BIN}}/npx'
+  WEB_PORT: 9229
+  API_PORT: 9339
+
+tasks:
+  default:
+    cmds:
+      - echo "Checking Taskfile... use 'task --list' to see available tasks"
+
+  cleanup:
+    desc: Clean up build artifacts and node_modules
+    cmds:
+      - rm -rf node_modules dist dist-ssr
+      - echo "Cleanup complete."
+
+  init:
+    desc: Initialize project and install dependencies
+    cmds:
+      - '{{.NPM}} install'
+      - echo "Dependencies installed."
+
+  dev:
+    desc: Start development server (Backend + Frontend)
+    cmds:
+      - '{{.NPM}} run dev'
+    env:
+      WEB_PORT: '{{.WEB_PORT}}'
+      API_PORT: '{{.API_PORT}}'
+
+  run:
+    desc: Build and run production server
+    cmds:
+      - '{{.NPM}} run build'
+      - '{{.NODE}} server.js'
+    env:
+      NODE_ENV: production
+      WEB_PORT: '{{.WEB_PORT}}'
+      API_PORT: '{{.API_PORT}}'
