@@ -151,6 +151,43 @@ app.post('/api/label_notes/:id/unarchive', async (req, res) => {
     }
 });
 
+// Weekly status notes
+app.get('/api/weekly_notes', async (req, res) => {
+    try {
+        const date = String(req.query.date || new Date().toISOString().split('T')[0]);
+        const note = await db.getWeeklyNoteForDate(date);
+        res.json(note);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.put('/api/weekly_notes/:id', async (req, res) => {
+    try {
+        const { content } = req.body || {};
+        const result = await db.updateWeeklyNote(req.params.id, content);
+        if (!result?.changes) {
+            return res.status(404).json({ error: 'Weekly note not found' });
+        }
+        res.json(result.note);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Search
+app.get('/api/search', async (req, res) => {
+    try {
+        const q = String(req.query.q || '').trim();
+        if (!q) return res.json([]);
+        const limit = Number(req.query.limit || 60);
+        const results = await db.search(q, limit);
+        res.json(results);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // Tasks
 app.get('/api/tasks', async (req, res) => {
     try {

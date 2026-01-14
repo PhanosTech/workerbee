@@ -25,6 +25,27 @@ const inDateRange = (iso, startDate, endDate) => {
     return d >= startDate && d <= endDate;
 };
 
+const utcDateFromDateOnly = (value) => {
+    const s = String(value || '').trim();
+    const match = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) return null;
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null;
+    return new Date(Date.UTC(year, month - 1, day));
+};
+
+// ISO week start (Monday) for a given YYYY-MM-DD.
+const weekStartDateOnly = (dateStr) => {
+    const d = utcDateFromDateOnly(parseDateOnly(dateStr));
+    if (!d) return null;
+    const day = d.getUTCDay(); // 0=Sun, 1=Mon...
+    const daysSinceMonday = (day + 6) % 7;
+    d.setUTCDate(d.getUTCDate() - daysSinceMonday);
+    return d.toISOString().split('T')[0];
+};
+
 const normalizePriority = (value) => {
     const v = String(value ?? 'NORMAL')
         .trim()
@@ -78,6 +99,7 @@ const createEmptyState = () => ({
             logs: 0,
             notes: 0,
             label_notes: 0,
+            weekly_notes: 0,
         },
     },
     categories: [],
@@ -86,6 +108,7 @@ const createEmptyState = () => ({
     logs: [],
     notes: [],
     label_notes: [],
+    weekly_notes: [],
 });
 
 let state = null;
@@ -127,7 +150,7 @@ const migrateInPlace = (st) => {
     for (const k of Object.keys(createEmptyState().meta.lastId)) {
         if (typeof st.meta.lastId[k] !== 'number') st.meta.lastId[k] = 0;
     }
-    for (const k of ['categories', 'tasks', 'todos', 'logs', 'notes', 'label_notes']) {
+    for (const k of ['categories', 'tasks', 'todos', 'logs', 'notes', 'label_notes', 'weekly_notes']) {
         if (!Array.isArray(st[k])) st[k] = [];
     }
 
@@ -156,6 +179,13 @@ const migrateInPlace = (st) => {
         if (!n.type) n.type = 'work_notes';
     });
 
+    st.weekly_notes.forEach((n) => {
+        if (!n.week_start) n.week_start = dateOnly(n.created_at || nowIso());
+        if (!n.created_at) n.created_at = nowIso();
+        if (!n.updated_at) n.updated_at = n.created_at;
+        if (n.content === undefined) n.content = '';
+    });
+
     // Recompute lastId based on existing data
     const maxId = (arr) => arr.reduce((m, x) => Math.max(m, Number(x?.id || 0)), 0);
     st.meta.lastId.categories = Math.max(st.meta.lastId.categories, maxId(st.categories));
@@ -164,6 +194,7 @@ const migrateInPlace = (st) => {
     st.meta.lastId.logs = Math.max(st.meta.lastId.logs, maxId(st.logs));
     st.meta.lastId.notes = Math.max(st.meta.lastId.notes, maxId(st.notes));
     st.meta.lastId.label_notes = Math.max(st.meta.lastId.label_notes, maxId(st.label_notes));
+    st.meta.lastId.weekly_notes = Math.max(st.meta.lastId.weekly_notes, maxId(st.weekly_notes));
 
     return st;
 };
@@ -748,6 +779,169 @@ module.exports = {
             await persist();
             return { changes: 1 };
         });
+    },
+
+    // Weekly status notes (one per week_start)
+    getWeeklyNoteForDate: async (dateStr) => {
+        const weekStart = weekStartDateOnly(dateStr);
+        if (!weekStart) throw new Error('Invalid date');
+        const st = getState();
+        const existing = st.weekly_notes.find((n) => String(n.week_start) === weekStart);
+        if (existing) return existing;
+
+        return withWriteLock(async () => {
+            const stLocked = getState();
+            const again = stLocked.weekly_notes.find((n) => String(n.week_start) === weekStart);
+            if (again) return again;
+            const id = bumpId('weekly_notes');
+            const ts = nowIso();
+            const note = {
+                id,
+                week_start: weekStart,
+                content: '',
+                created_at: ts,
+                updated_at: ts,
+            };
+            stLocked.weekly_notes.push(note);
+            await persist();
+            return note;
+        });
+    },
+    getWeeklyNote: async (id) => {
+        const st = getState();
+        return st.weekly_notes.find((n) => Number(n.id) === Number(id)) || null;
+    },
+    updateWeeklyNote: async (id, content) => {
+        return withWriteLock(async () => {
+            const st = getState();
+            const note = st.weekly_notes.find((n) => Number(n.id) === Number(id));
+            if (!note) return { changes: 0, note: null };
+            note.content = content ?? '';
+            note.updated_at = nowIso();
+            await persist();
+            return { changes: 1, note };
+        });
+    },
+
+    // Search (tasks + notes)
+    search: async (query, limit = 60) => {
+        const st = getState();
+        const raw = String(query ?? '').trim();
+        if (!raw) return [];
+
+        const terms = raw
+            .toLowerCase()
+            .split(/\s+/)
+            .map((t) => t.trim())
+            .filter(Boolean);
+        if (!terms.length) return [];
+
+        const max = Math.max(1, Math.min(200, Number(limit) || 60));
+
+        const htmlToText = (html) =>
+            String(html || '')
+                .replace(/<[^>]*>/g, ' ')
+                .replace(/&nbsp;/gi, ' ')
+                .replace(/\s+/g, ' ')
+                .trim();
+
+        const makeSnippet = (text) => {
+            const cleaned = String(text || '').replace(/\s+/g, ' ').trim();
+            if (!cleaned) return '';
+            const lower = cleaned.toLowerCase();
+            let idx = -1;
+            for (const term of terms) {
+                idx = lower.indexOf(term);
+                if (idx !== -1) break;
+            }
+            if (idx === -1) return cleaned.slice(0, 140);
+            const start = Math.max(0, idx - 40);
+            const end = Math.min(cleaned.length, idx + 120);
+            const prefix = start > 0 ? '…' : '';
+            const suffix = end < cleaned.length ? '…' : '';
+            return `${prefix}${cleaned.slice(start, end)}${suffix}`;
+        };
+
+        const matches = (title, body) => {
+            const t = String(title || '').toLowerCase();
+            const b = String(body || '').toLowerCase();
+            return terms.every((term) => t.includes(term) || b.includes(term));
+        };
+
+        const scoreHit = (title, body) => {
+            const t = String(title || '').toLowerCase();
+            const b = String(body || '').toLowerCase();
+            let score = 0;
+            for (const term of terms) {
+                if (t.includes(term)) score += 5;
+                else if (b.includes(term)) score += 1;
+            }
+            return score;
+        };
+
+        const results = [];
+
+        st.tasks.forEach((task) => {
+            if (!task || task.archived) return;
+            const title = String(task.title || '').trim();
+            const body = `${task.description || ''} ${task.url || ''}`.trim();
+            if (!matches(title, body)) return;
+            const snippetSource = task.description ? String(task.description) : `${title} ${body}`.trim();
+            results.push({
+                type: 'task',
+                id: Number(task.id),
+                title,
+                status: task.status ?? null,
+                category_id: task.category_id ?? null,
+                updated_at: task.updated_at ?? task.created_at ?? null,
+                snippet: makeSnippet(snippetSource),
+                score: scoreHit(title, body),
+            });
+        });
+
+        st.label_notes.forEach((note) => {
+            if (!note || note.archived) return;
+            const title = String(note.title || '').trim() || 'Untitled note';
+            const bodyText = htmlToText(note.content);
+            if (!matches(title, bodyText)) return;
+            results.push({
+                type: 'note',
+                id: Number(note.id),
+                title,
+                category_id: note.category_id ?? null,
+                updated_at: note.updated_at ?? note.created_at ?? null,
+                snippet: makeSnippet(bodyText || title),
+                score: scoreHit(title, bodyText),
+            });
+        });
+
+        st.weekly_notes.forEach((note) => {
+            if (!note) return;
+            const title = `Week of ${note.week_start || ''}`.trim();
+            const bodyText = htmlToText(note.content);
+            if (!matches(title, bodyText)) return;
+            results.push({
+                type: 'weekly',
+                id: Number(note.id),
+                week_start: note.week_start ?? null,
+                title,
+                updated_at: note.updated_at ?? note.created_at ?? null,
+                snippet: makeSnippet(bodyText || title),
+                score: scoreHit(title, bodyText),
+            });
+        });
+
+        results.sort((a, b) => {
+            const sa = Number(a.score || 0);
+            const sb = Number(b.score || 0);
+            if (sa !== sb) return sb - sa;
+            const da = String(a.updated_at || '');
+            const db = String(b.updated_at || '');
+            if (da !== db) return db.localeCompare(da);
+            return String(a.title || '').localeCompare(String(b.title || ''), undefined, { sensitivity: 'base' });
+        });
+
+        return results.slice(0, max).map(({ score, ...rest }) => rest);
     },
 
     // Reports / archive

@@ -166,5 +166,27 @@ export const api = {
     },
     deleteLabelNote: async (id) => {
         return fetch(`${API_BASE}/label_notes/${id}`, { method: 'DELETE' });
+    },
+
+    // Search
+    search: async (q, limit) => {
+        const query = new URLSearchParams({ q, ...(limit ? { limit: String(limit) } : {}) }).toString();
+        const res = await fetch(`${API_BASE}/search?${query}`);
+        return res.json();
+    },
+
+    // Weekly status notes
+    getWeeklyNote: async (date) => {
+        const query = new URLSearchParams(date ? { date } : {}).toString();
+        const res = await fetch(`${API_BASE}/weekly_notes${query ? `?${query}` : ''}`);
+        return res.json();
+    },
+    updateWeeklyNote: async (id, content) => {
+        const res = await fetch(`${API_BASE}/weekly_notes/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content })
+        });
+        return res.json();
     }
 };

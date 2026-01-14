@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { api } from '../api';
 import TiptapEditor from './TiptapEditor';
+
+const COPY_TASK_NOTE_FOLDER_KEY = 'wb-copy-task-note-folder-id';
 
 const TaskModal = ({ taskId, onClose, onUpdate }) => {
     const [task, setTask] = useState(null);
@@ -8,6 +10,7 @@ const TaskModal = ({ taskId, onClose, onUpdate }) => {
     const [logs, setLogs] = useState([]);
     const [notes, setNotes] = useState([]);
     const [labelNotes, setLabelNotes] = useState([]);
+    const [categories, setCategories] = useState([]);
     const [newTodo, setNewTodo] = useState('');
     const [newLog, setNewLog] = useState('');
     const [notesTab, setNotesTab] = useState('task');
@@ -19,6 +22,11 @@ const TaskModal = ({ taskId, onClose, onUpdate }) => {
     const [activeLabelNote, setActiveLabelNote] = useState(null);
     const [labelNoteTitleDraft, setLabelNoteTitleDraft] = useState('');
     const [labelNoteDraft, setLabelNoteDraft] = useState('');
+    const [copyToFolderOpen, setCopyToFolderOpen] = useState(false);
+    const [copyTargetCategoryId, setCopyTargetCategoryId] = useState(null);
+    const [copyingNote, setCopyingNote] = useState(false);
+    const [copyStatus, setCopyStatus] = useState(null);
+    const [copyFoldersLoading, setCopyFoldersLoading] = useState(false);
 
     useEffect(() => {
         loadTaskData();
@@ -50,6 +58,89 @@ const TaskModal = ({ taskId, onClose, onUpdate }) => {
             console.error(err);
         }
     };
+
+    const loadCategories = async () => {
+        if (copyFoldersLoading) return;
+        setCopyFoldersLoading(true);
+        try {
+            const data = await api.getCategories();
+            setCategories(Array.isArray(data) ? data : []);
+        } catch (err) {
+            console.error(err);
+            setCategories([]);
+        } finally {
+            setCopyFoldersLoading(false);
+        }
+    };
+
+    const orderedCategoryOptions = useMemo(() => {
+        const list = Array.isArray(categories) ? categories : [];
+        const byParent = new Map();
+        list.forEach((cat) => {
+            const key = cat.parent_id ?? null;
+            const siblings = byParent.get(key) || [];
+            siblings.push(cat);
+            byParent.set(key, siblings);
+        });
+
+        const sortCats = (a, b) => {
+            const ap = Number(a?.position ?? 0);
+            const bp = Number(b?.position ?? 0);
+            if (ap !== bp) return ap - bp;
+            return String(a?.name || '').localeCompare(String(b?.name || ''), undefined, { sensitivity: 'base' });
+        };
+
+        for (const [key, siblings] of byParent.entries()) {
+            byParent.set(key, siblings.slice().sort(sortCats));
+        }
+
+        const out = [];
+        const walk = (parentId, depth) => {
+            const siblings = byParent.get(parentId) || [];
+            siblings.forEach((cat) => {
+                const prefix = depth > 0 ? '\u00A0\u00A0'.repeat(depth) : '';
+                out.push({ id: cat.id, label: `${prefix}${cat.name || `Folder #${cat.id}`}` });
+                walk(cat.id, depth + 1);
+            });
+        };
+        walk(null, 0);
+        return out;
+    }, [categories]);
+
+    const readLastCopyFolderId = () => {
+        try {
+            const raw = window.localStorage.getItem(COPY_TASK_NOTE_FOLDER_KEY);
+            const parsed = raw ? Number(raw) : null;
+            return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+        } catch {
+            return null;
+        }
+    };
+
+    const openCopyToFolder = async () => {
+        setCopyStatus(null);
+        setCopyToFolderOpen(true);
+        const fallback =
+            readLastCopyFolderId() ??
+            (Number.isFinite(Number(task?.category_id)) ? Number(task.category_id) : null);
+        setCopyTargetCategoryId((prev) => prev ?? fallback);
+        await loadCategories();
+    };
+
+    const closeCopyToFolder = () => {
+        setCopyToFolderOpen(false);
+        setCopyingNote(false);
+        setCopyStatus(null);
+    };
+
+    useEffect(() => {
+        if (!copyToFolderOpen) return;
+        if (!orderedCategoryOptions.length) return;
+        const selectedId = Number(copyTargetCategoryId);
+        const exists = orderedCategoryOptions.some((opt) => Number(opt.id) === selectedId);
+        if (exists) return;
+        setCopyTargetCategoryId(orderedCategoryOptions[0].id);
+    }, [copyToFolderOpen, orderedCategoryOptions, copyTargetCategoryId]);
 
     const handleSaveTask = async (updates = {}) => {
         const nextTask = { ...task, ...updates };
@@ -117,6 +208,9 @@ const TaskModal = ({ taskId, onClose, onUpdate }) => {
         setActiveNote(note || null);
         setNoteTitleDraft(note?.title || '');
         setNoteDraft(normalizeNoteContent(note?.content || ''));
+        setCopyToFolderOpen(false);
+        setCopyTargetCategoryId(null);
+        setCopyStatus(null);
         setShowNoteModal(true);
     };
 
@@ -125,6 +219,7 @@ const TaskModal = ({ taskId, onClose, onUpdate }) => {
         setActiveNote(null);
         setNoteTitleDraft('');
         setNoteDraft('');
+        closeCopyToFolder();
     };
 
     const handleSaveNote = async () => {
@@ -137,6 +232,36 @@ const TaskModal = ({ taskId, onClose, onUpdate }) => {
         }
         closeNoteModal();
         loadTaskData();
+    };
+
+    const handleCopyNoteToFolder = async () => {
+        const targetId = Number(copyTargetCategoryId);
+        if (!Number.isFinite(targetId) || targetId <= 0) return;
+        if (isEmptyHtml(noteDraft)) return;
+
+        const title = noteTitleDraft?.trim()
+            ? noteTitleDraft.trim()
+            : task?.title
+              ? `[Task] ${task.title}`
+              : 'Task note';
+
+        setCopyingNote(true);
+        setCopyStatus(null);
+        try {
+            await api.addLabelNote(targetId, title, noteDraft, 'work_notes');
+            try {
+                window.localStorage.setItem(COPY_TASK_NOTE_FOLDER_KEY, String(targetId));
+            } catch {
+                // ignore
+            }
+            const folderName = categories.find((c) => Number(c.id) === targetId)?.name;
+            setCopyStatus(folderName ? `Copied to “${folderName}”.` : 'Copied.');
+        } catch (err) {
+            console.error(err);
+            setCopyStatus('Copy failed.');
+        } finally {
+            setCopyingNote(false);
+        }
     };
 
     const handleDeleteNote = async () => {
@@ -476,9 +601,50 @@ const TaskModal = ({ taskId, onClose, onUpdate }) => {
                             placeholder="Paste an email, a snippet, or free-form notes…"
                             onRequestSave={handleSaveNote}
                         />
+                        {copyToFolderOpen && (
+                            <div className="copy-to-folder-row" role="region" aria-label="Copy task note to folder">
+                                <select
+                                    value={copyTargetCategoryId ?? ''}
+                                    onChange={(e) => setCopyTargetCategoryId(Number(e.target.value) || null)}
+                                    disabled={copyFoldersLoading}
+                                    aria-label="Target folder"
+                                >
+                                    <option value="" disabled>
+                                        {copyFoldersLoading ? 'Loading folders…' : 'Select a folder…'}
+                                    </option>
+                                    {orderedCategoryOptions.map((opt) => (
+                                        <option key={opt.id} value={opt.id}>
+                                            {opt.label}
+                                        </option>
+                                    ))}
+                                </select>
+                                <button
+                                    type="button"
+                                    onClick={handleCopyNoteToFolder}
+                                    disabled={
+                                        copyFoldersLoading ||
+                                        copyingNote ||
+                                        !copyTargetCategoryId ||
+                                        isEmptyHtml(noteDraft)
+                                    }
+                                    title="Copy this task note into a folder note"
+                                >
+                                    {copyingNote ? 'Copying…' : 'Copy'}
+                                </button>
+                                <button type="button" className="icon-btn" onClick={closeCopyToFolder} title="Close copy">
+                                    ✕
+                                </button>
+                            </div>
+                        )}
+                        {copyStatus ? <div className="muted copy-to-folder-status">{copyStatus}</div> : null}
                         <div className="modal-actions">
                             <button onClick={closeNoteModal}>Cancel</button>
                             {activeNote?.id && <button onClick={handleDeleteNote}>Delete</button>}
+                            {!copyToFolderOpen && (
+                                <button type="button" onClick={openCopyToFolder} disabled={isEmptyHtml(noteDraft)}>
+                                    📁 Copy to folder…
+                                </button>
+                            )}
                             <button className="primary-btn" onClick={handleSaveNote} disabled={isEmptyHtml(noteDraft)}>
                                 Save Note
                             </button>

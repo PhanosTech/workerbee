@@ -19,7 +19,7 @@ const LABEL_COLOR_PRESETS = [
 const STORAGE_DEFAULT_FOLDER_KEY = 'wb-default-folder-id';
 const STORAGE_COLLAPSED_FOLDERS_KEY = 'wb-folders-collapsed';
 
-const BacklogPage = ({ focus }) => {
+const BacklogPage = ({ focus, onOpenSearch }) => {
     const [categories, setCategories] = useState([]);
     const [categoriesLoaded, setCategoriesLoaded] = useState(false);
     const [tasks, setTasks] = useState([]);
@@ -585,7 +585,15 @@ const BacklogPage = ({ focus }) => {
                                     Include sub-folders
                                 </label>
                             )}
-                            <button onClick={() => openLabelSettingsFor(selectedCategory)} className="primary-btn">Manage Folder</button>
+                            <button
+                                type="button"
+                                className="icon-btn"
+                                title="Search"
+                                aria-label="Search"
+                                onClick={() => onOpenSearch?.()}
+                            >
+                                🔍
+                            </button>
                         </div>
                     )}
                 </header>

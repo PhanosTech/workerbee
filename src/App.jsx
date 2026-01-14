@@ -4,6 +4,8 @@ import ActivePage from './pages/ActivePage';
 import ReportsPage from './pages/ReportsPage';
 import BacklogPage from './pages/BacklogPage';
 import NotesPage from './pages/NotesPage';
+import WeeklyStatusPage from './pages/WeeklyStatusPage';
+import SearchModal from './components/SearchModal';
 import './styles/main.css';
 
 const VALID_THEMES = new Set(['midnight', 'graphite', 'ocean', 'ember', 'amethyst', 'nord', 'forest', 'light']);
@@ -20,7 +22,9 @@ function App() {
     const [activeTab, setActiveTab] = useState('kanban');
     const [backlogFocus, setBacklogFocus] = useState(null); // { taskId, categoryId, nonce }
     const [notesFocus, setNotesFocus] = useState(null); // { noteId, nonce }
+    const [weeklyFocus, setWeeklyFocus] = useState(null); // { date, nonce }
     const [theme, setTheme] = useState(getInitialTheme);
+    const [searchOpen, setSearchOpen] = useState(false);
 
     useEffect(() => {
         const parseHash = () => {
@@ -54,15 +58,37 @@ function App() {
         setActiveTab('backlog');
     };
 
+    const openSearch = () => setSearchOpen(true);
+
+    const handleSearchSelect = (result) => {
+        if (!result) return;
+        if (result.type === 'task') {
+            openTaskInBacklog({ id: result.id, category_id: result.category_id ?? null });
+            return;
+        }
+        if (result.type === 'note') {
+            setActiveTab('notes');
+            setNotesFocus({ noteId: result.id, nonce: Date.now() });
+            return;
+        }
+        if (result.type === 'weekly') {
+            setActiveTab('weekly');
+            setWeeklyFocus({ date: result.week_start || '', nonce: Date.now() });
+        }
+    };
+
     return (
         <div className="app-container">
             <TopNav activeTab={activeTab} setActiveTab={setActiveTab} theme={theme} setTheme={setTheme} />
             <main className={`content ${activeTab === 'notes' ? 'content-notes' : ''}`} role="main">
                 {activeTab === 'kanban' && <ActivePage onOpenInBacklog={openTaskInBacklog} />}
-                {activeTab === 'notes' && <NotesPage focus={notesFocus} />}
-                {activeTab === 'backlog' && <BacklogPage focus={backlogFocus} />}
+                {activeTab === 'weekly' && <WeeklyStatusPage focus={weeklyFocus} />}
+                {activeTab === 'notes' && <NotesPage focus={notesFocus} onOpenSearch={openSearch} />}
+                {activeTab === 'backlog' && <BacklogPage focus={backlogFocus} onOpenSearch={openSearch} />}
                 {activeTab === 'reports' && <ReportsPage />}
             </main>
+
+            <SearchModal open={searchOpen} onClose={() => setSearchOpen(false)} onSelect={handleSearchSelect} />
         </div>
     );
 }

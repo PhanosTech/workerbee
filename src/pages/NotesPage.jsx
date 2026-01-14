@@ -45,7 +45,7 @@ const buildNoteUrl = (noteId) => {
 
 const buildModalLink = (noteId) => `${MODAL_SCHEME_PREFIX}${noteId}`;
 
-function NotesPage({ focus }) {
+function NotesPage({ focus, onOpenSearch }) {
     const [categories, setCategories] = useState([]);
     const [notesMap, setNotesMap] = useState({}); // { categoryId: [notes] }
     const [selectedNote, setSelectedNote] = useState(null); // { id, title, content, category_id }
@@ -426,9 +426,20 @@ function NotesPage({ focus }) {
                 <div className="notes-sidebar-header">
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
                         <h2 style={{ margin: 0 }}>Notebooks</h2>
-                        <button type="button" className="link-btn" onClick={() => setArchiveDialogOpen(true)}>
-                            Archive…
-                        </button>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <button
+                                type="button"
+                                className="icon-btn"
+                                title="Search"
+                                aria-label="Search"
+                                onClick={() => onOpenSearch?.()}
+                            >
+                                🔍
+                            </button>
+                            <button type="button" className="link-btn" onClick={() => setArchiveDialogOpen(true)}>
+                                Archive…
+                            </button>
+                        </div>
                     </div>
                 </div>
                 <div className="notes-sidebar-content">

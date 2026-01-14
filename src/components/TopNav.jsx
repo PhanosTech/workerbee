@@ -37,6 +37,13 @@ const TopNav = ({ activeTab, setActiveTab, theme, setTheme }) => {
                 >
                     Reports
                 </button>
+                <button
+                    type="button"
+                    className={`topbar-tab ${activeTab === 'weekly' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('weekly')}
+                >
+                    Weekly
+                </button>
             </nav>
 
             <div className="topbar-right">
