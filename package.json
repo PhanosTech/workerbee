@@ -2,7 +2,7 @@
   "name": "workbee",
   "version": "1.0.0",
   "description": "",
-  "main": "main.js",
+  "main": "electron/main.js",
   "scripts": {
     "dev": "concurrently --kill-others-on-fail --names api,web \"npm run server\" \"npm run client\"",
     "client": "vite",
@@ -11,7 +11,7 @@
     "preview": "vite preview",
     "electron": "electron .",
     "pack": "electron-builder --dir",
-    "pack:win": "electron-builder --win --x64 --dir"
+    "pack:win": "node scripts/pack-win.js"
   },
   "keywords": [],
   "author": "",
@@ -57,7 +57,7 @@
     },
     "win": {
       "target": "dir",
-      "icon": "favicon.ico"
+      "icon": "logo.png"
     },
     "linux": {
       "target": "dir"
