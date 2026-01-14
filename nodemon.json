@@ -1,0 +1,5 @@
+{
+  "watch": ["server.js", "database.js"],
+  "ext": "js,mjs,cjs,json",
+  "ignore": ["workbee.json", "workbee.json.tmp", "dist/**", "bin/**"]
+}

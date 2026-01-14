@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 
 const { spawn } = require('child_process');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 
 function normalizeBoolean(value) {
   if (value == null) return null;
@@ -16,6 +19,26 @@ function looksLikeSymlinkPrivilegeError(output) {
     lower.includes('cannot create symbolic link') ||
     lower.includes('a required privilege is not held by the client')
   );
+}
+
+function canCreateFileSymlink() {
+  if (process.platform !== 'win32') return true;
+  const tmpBase = fs.mkdtempSync(path.join(os.tmpdir(), 'workerbee-symlink-'));
+  try {
+    const target = path.join(tmpBase, 'target.txt');
+    const link = path.join(tmpBase, 'link.txt');
+    fs.writeFileSync(target, 'x');
+    fs.symlinkSync(target, link, 'file');
+    return true;
+  } catch {
+    return false;
+  } finally {
+    try {
+      fs.rmSync(tmpBase, { recursive: true, force: true });
+    } catch {
+      // ignore
+    }
+  }
 }
 
 function runElectronBuilder(builderArgs) {
@@ -49,15 +72,32 @@ async function main() {
   const userArgs = process.argv.slice(2);
   const baseArgs = ['--win', '--x64', '--dir', ...userArgs];
 
-  const forceNoRcedit = normalizeBoolean(process.env.WORKBEE_FORCE_NO_WIN_RCEDIT);
-  const allowFallback = normalizeBoolean(process.env.WORKBEE_NO_WIN_SYMLINK_FALLBACK);
+  const shouldForceNoRcedit = normalizeBoolean(process.env.WORKBEE_FORCE_NO_WIN_RCEDIT) === true;
+  const shouldDisableFallback = normalizeBoolean(process.env.WORKBEE_NO_WIN_SYMLINK_FALLBACK) === true;
 
-  const shouldForceNoRcedit = forceNoRcedit === true;
-  const shouldDisableFallback = allowFallback === true;
+  const fallbackArgs = [...baseArgs, '-c.win.signAndEditExecutable=false'];
 
-  const primaryArgs = shouldForceNoRcedit
-    ? [...baseArgs, '-c.win.signAndEditExecutable=false']
-    : baseArgs;
+  if (shouldForceNoRcedit) {
+    const fallbackRun = await runElectronBuilder(fallbackArgs);
+    process.exit(fallbackRun.code);
+    return;
+  }
+
+  const symlinkAllowed = canCreateFileSymlink();
+  if (!symlinkAllowed && !shouldDisableFallback) {
+    console.error(
+      [
+        '',
+        '[workbee] Windows symlink creation is blocked; packaging will use win.signAndEditExecutable=false.',
+        '[workbee] Fix (recommended): enable Windows Developer Mode, or run the terminal as Administrator, then retry.',
+      ].join('\n')
+    );
+    const fallbackRun = await runElectronBuilder(fallbackArgs);
+    process.exit(fallbackRun.code);
+    return;
+  }
+
+  const primaryArgs = baseArgs;
 
   const firstRun = await runElectronBuilder(primaryArgs);
   if (firstRun.code === 0) {
@@ -84,7 +124,6 @@ async function main() {
     return;
   }
 
-  const fallbackArgs = [...baseArgs, '-c.win.signAndEditExecutable=false'];
   const fallbackRun = await runElectronBuilder(fallbackArgs);
   process.exit(fallbackRun.code);
 }
@@ -93,4 +132,3 @@ main().catch((err) => {
   console.error(err);
   process.exit(1);
 });
-

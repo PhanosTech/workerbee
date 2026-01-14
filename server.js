@@ -7,6 +7,7 @@ const db = require('./database');
 const app = express();
 const API_PORT = Number(process.env.API_PORT || 9339);
 const WEB_PORT = Number(process.env.WEB_PORT || 9229);
+const HOST = String(process.env.HOST || '0.0.0.0');
 
 app.use(cors());
 app.use(bodyParser.json());
@@ -402,13 +403,13 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 if (process.env.NODE_ENV === 'production') {
-    app.listen(WEB_PORT, '0.0.0.0', () => {
+    app.listen(WEB_PORT, HOST, () => {
         console.log(`Web server running on http://localhost:${WEB_PORT}`);
     });
 }
 
 if (process.env.NODE_ENV !== 'production' || API_PORT !== WEB_PORT) {
-    app.listen(API_PORT, '0.0.0.0', () => {
+    app.listen(API_PORT, HOST, () => {
         console.log(`API server running on http://localhost:${API_PORT}`);
         if (process.env.NODE_ENV !== 'production') {
             console.log(`Web UI (dev) should be at http://localhost:${WEB_PORT}/`);

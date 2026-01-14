@@ -14,11 +14,11 @@ export const api = {
         });
         return res.json();
     },
-    updateCategory: async (id, parent_id, name, color) => {
+    updateCategory: async (id, parent_id, name, color, position) => {
         const res = await fetch(`${API_BASE}/categories/${id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ parent_id, name, color })
+            body: JSON.stringify({ parent_id, name, color, position })
         });
         return res.json();
     },

@@ -214,7 +214,7 @@ const ActivePage = ({ onOpenInBacklog }) => {
             <header className="page-header">
                 <div>
                     <h2 style={{ margin: 0 }}>Kanban</h2>
-                    <div className="muted" style={{ marginTop: 6 }}>Drag cards between lanes.</div>
+                    <div className="muted" style={{ marginTop: 2 }}>Drag cards between lanes.</div>
                 </div>
                 <div className="controls">
                     <button onClick={handleArchiveDone}>Clear Done</button>
@@ -226,6 +226,7 @@ const ActivePage = ({ onOpenInBacklog }) => {
                     <section
                         key={lane.key}
                         className="kanban-lane"
+                        data-status={lane.key}
                         onDragOver={(e) => e.preventDefault()}
                         onDrop={(e) => handleDropToLane(e, lane.key)}
                     >
@@ -318,17 +319,21 @@ const ActivePage = ({ onOpenInBacklog }) => {
                                             )}
                                             <button
                                                 type="button"
-                                                className="link-btn"
+                                                className="icon-btn kanban-action-icon"
                                                 onClick={(e) => handleOpenInBacklog(e, task)}
+                                                title="Open in Backlog"
+                                                aria-label="Open in Backlog"
                                             >
-                                                Open in Backlog
+                                                📚
                                             </button>
                                             <button
                                                 type="button"
-                                                className="link-btn danger-link"
+                                                className="icon-btn kanban-action-icon danger-icon"
                                                 onClick={(e) => handleArchiveTask(e, task)}
+                                                title="Archive task"
+                                                aria-label="Archive task"
                                             >
-                                                Archive
+                                                🗄️
                                             </button>
                                         </div>
 

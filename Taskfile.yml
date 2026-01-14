@@ -76,3 +76,17 @@ tasks:
       - 'false'
     env:
       NODE_ENV: production
+
+  install:
+    desc: Install as a systemd service (Linux)
+    platforms: [linux]
+    cmds:
+      - '{{.NPM}} install'
+      - '{{.NPM}} run build'
+      - sudo sh scripts/install-systemd.sh
+
+  uninstall:
+    desc: Uninstall systemd service (keeps /opt/workerbee/data)
+    platforms: [linux]
+    cmds:
+      - sudo sh scripts/uninstall-systemd.sh

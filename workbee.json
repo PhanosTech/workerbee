@@ -2,16 +2,52 @@
   "meta": {
     "version": 1,
     "lastId": {
-      "categories": 0,
-      "tasks": 0,
+      "categories": 2,
+      "tasks": 1,
       "todos": 0,
       "logs": 0,
       "notes": 0,
       "label_notes": 0
     }
   },
-  "categories": [],
-  "tasks": [],
+  "categories": [
+    {
+      "id": 1,
+      "parent_id": null,
+      "name": "birukus",
+      "color": "#89b4fa",
+      "position": 0,
+      "archived": 0
+    },
+    {
+      "id": 2,
+      "parent_id": null,
+      "name": "phanos",
+      "color": "#89b4fa",
+      "position": 1,
+      "archived": 0
+    }
+  ],
+  "tasks": [
+    {
+      "id": 1,
+      "category_id": 2,
+      "title": "task pilot shutdown",
+      "description": "",
+      "url": "",
+      "task_type": "NONE",
+      "story_points": 0,
+      "priority": "NORMAL",
+      "status": "DONE",
+      "board_position": 0,
+      "archived": 0,
+      "archived_at": null,
+      "created_at": "2026-01-14T16:40:25.590Z",
+      "started_at": "2026-01-14T16:40:27.503Z",
+      "doing_at": "2026-01-14T16:40:32.833Z",
+      "done_at": "2026-01-14T16:40:34.380Z"
+    }
+  ],
   "todos": [],
   "logs": [],
   "notes": [],

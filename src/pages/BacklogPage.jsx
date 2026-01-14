@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { api } from '../api';
 import TaskModal from '../components/TaskModal';
 import TiptapEditor from '../components/TiptapEditor';
@@ -37,6 +37,10 @@ const BacklogPage = ({ focus }) => {
     const [showCreateTask, setShowCreateTask] = useState(false);
     const [newTaskTitle, setNewTaskTitle] = useState('');
     const [draggingCategory, setDraggingCategory] = useState(null); // { id, parent_id }
+    const [dragOverCategoryId, setDragOverCategoryId] = useState(null);
+
+    const createCatInputRef = useRef(null);
+    const createTaskInputRef = useRef(null);
 
     const [defaultCategoryId, setDefaultCategoryId] = useState(() => {
         if (typeof window === 'undefined') return null;
@@ -75,6 +79,22 @@ const BacklogPage = ({ focus }) => {
     useEffect(() => {
         loadCategories();
     }, []);
+
+    useEffect(() => {
+        if (!showCreateCat) return;
+        const raf = window.requestAnimationFrame(() => {
+            createCatInputRef.current?.focus?.();
+        });
+        return () => window.cancelAnimationFrame(raf);
+    }, [showCreateCat]);
+
+    useEffect(() => {
+        if (!showCreateTask) return;
+        const raf = window.requestAnimationFrame(() => {
+            createTaskInputRef.current?.focus?.();
+        });
+        return () => window.cancelAnimationFrame(raf);
+    }, [showCreateTask]);
 
     useEffect(() => {
         if (!categoriesLoaded) return;
@@ -119,6 +139,18 @@ const BacklogPage = ({ focus }) => {
         () => findCategoryById(categories, selectedCategoryId),
         [categories, selectedCategoryId]
     );
+
+    const categoryById = useMemo(() => {
+        const map = new Map();
+        const walk = (nodes) => {
+            nodes.forEach((node) => {
+                map.set(node.id, node);
+                if (node.children?.length) walk(node.children);
+            });
+        };
+        walk(categories);
+        return map;
+    }, [categories]);
 
     useEffect(() => {
         if (selectedCategory) {
@@ -166,9 +198,15 @@ const BacklogPage = ({ focus }) => {
         setNotes(data);
     };
 
+    const openCreateCategory = () => {
+        setNewCatName('');
+        setShowCreateCat(true);
+    };
+
     const handleCreateCategory = async (e) => {
         e.preventDefault();
         const parentId = selectedCategoryId || null;
+        if (!newCatName.trim()) return;
         await api.createCategory(parentId, newCatName, '#89b4fa');
         setNewCatName('');
         setShowCreateCat(false);
@@ -301,20 +339,49 @@ const BacklogPage = ({ focus }) => {
         });
     };
 
+    const parseDragCategoryId = (e) => {
+        const raw = e.dataTransfer?.getData?.('text/plain');
+        const id = Number(raw || draggingCategory?.id);
+        return Number.isFinite(id) && id > 0 ? id : null;
+    };
+
+    const getCategoryParentId = (categoryId) => {
+        const node = categoryById.get(categoryId);
+        return node?.parent_id ?? null;
+    };
+
+    const wouldCreateCycle = (movingId, newParentId) => {
+        if (!newParentId) return false;
+        let current = categoryById.get(newParentId);
+        while (current) {
+            if (current.id === movingId) return true;
+            current = current.parent_id ? categoryById.get(current.parent_id) : null;
+        }
+        return false;
+    };
+
     const handleDragStart = (e, node) => {
         setDraggingCategory({ id: node.id, parent_id: node.parent_id ?? null });
+        setDragOverCategoryId(null);
         e.dataTransfer.effectAllowed = 'move';
         e.dataTransfer.setData('text/plain', String(node.id));
     };
 
+    const handleDragEnd = () => {
+        setDraggingCategory(null);
+        setDragOverCategoryId(null);
+    };
+
     const handleDropOnSibling = async (e, parentId, targetId, siblings) => {
         e.preventDefault();
-        if (!draggingCategory?.id) return;
-        if ((draggingCategory.parent_id ?? null) !== (parentId ?? null)) return;
-        if (draggingCategory.id === targetId) return;
+        e.stopPropagation();
+        const movingId = parseDragCategoryId(e);
+        if (!movingId) return;
+        if ((getCategoryParentId(movingId) ?? null) !== (parentId ?? null)) return;
+        if (movingId === targetId) return;
 
         const orderedIds = siblings.map((n) => n.id);
-        const fromIndex = orderedIds.indexOf(draggingCategory.id);
+        const fromIndex = orderedIds.indexOf(movingId);
         const toIndex = orderedIds.indexOf(targetId);
         if (fromIndex === -1 || toIndex === -1) return;
 
@@ -325,30 +392,87 @@ const BacklogPage = ({ focus }) => {
 
         await api.reorderCategories(parentId ?? null, next);
         setDraggingCategory(null);
+        setDragOverCategoryId(null);
+        loadCategories();
+    };
+
+    const handleMoveCategory = async (e, newParentId) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const movingId = parseDragCategoryId(e);
+        if (!movingId) return;
+        if ((newParentId ?? null) === movingId) return;
+        if (wouldCreateCycle(movingId, newParentId)) return;
+
+        const movingNode = categoryById.get(movingId) || findCategoryById(categories, movingId);
+        if (!movingNode) return;
+
+        const currentParentId = movingNode.parent_id ?? null;
+        if ((currentParentId ?? null) === (newParentId ?? null)) {
+            setDraggingCategory(null);
+            setDragOverCategoryId(null);
+            return;
+        }
+
+        const siblings =
+            newParentId == null
+                ? categories
+                : categoryById.get(newParentId)?.children || [];
+        const nextPosition =
+            siblings.reduce((m, node) => Math.max(m, Number(node.position ?? 0)), -1) + 1;
+
+        await api.updateCategory(
+            movingId,
+            newParentId ?? null,
+            movingNode.name,
+            movingNode.color,
+            nextPosition
+        );
+        setDraggingCategory(null);
+        setDragOverCategoryId(null);
         loadCategories();
     };
 
     const renderTree = (nodes, parentId = null) => (
         <ul className="cat-tree">
             {nodes.map((node) => (
-                <li
-                    key={node.id}
-                    onDragOver={(e) => {
-                        if (!draggingCategory) return;
-                        if ((draggingCategory.parent_id ?? null) !== (parentId ?? null)) return;
-                        e.preventDefault();
-                    }}
-                    onDrop={(e) => handleDropOnSibling(e, parentId, node.id, nodes)}
-                >
+                <li key={node.id}>
                     <div
-                        className={`cat-item ${selectedCategoryId === node.id ? 'selected' : ''}`}
+                        className={`cat-item ${selectedCategoryId === node.id ? 'selected' : ''} ${dragOverCategoryId === node.id ? 'drag-target' : ''}`}
                         onClick={() => setSelectedCategoryId(node.id)}
+                        onDragOver={(e) => {
+                            if (!draggingCategory) return;
+                            const movingId = parseDragCategoryId(e);
+                            if (!movingId) return;
+                            if (movingId === node.id) return;
+                            if (wouldCreateCycle(movingId, node.id)) return;
+                            e.preventDefault();
+                            e.stopPropagation();
+                            e.dataTransfer.dropEffect = 'move';
+                            setDragOverCategoryId(node.id);
+                        }}
+                        onDragLeave={() => {
+                            setDragOverCategoryId((prev) => (prev === node.id ? null : prev));
+                        }}
+                        onDrop={(e) => handleMoveCategory(e, node.id)}
                     >
                         <span
                             className="drag-handle"
-                            title="Drag to reorder"
+                            title="Drag to reorder (drop on handle) or move into a folder"
                             draggable
                             onDragStart={(e) => handleDragStart(e, node)}
+                            onDragEnd={handleDragEnd}
+                            onDragOver={(e) => {
+                                if (!draggingCategory) return;
+                                const movingId = parseDragCategoryId(e);
+                                if (!movingId) return;
+                                if ((getCategoryParentId(movingId) ?? null) !== (parentId ?? null)) return;
+                                if (movingId === node.id) return;
+                                e.preventDefault();
+                                e.stopPropagation();
+                                e.dataTransfer.dropEffect = 'move';
+                            }}
+                            onDrop={(e) => handleDropOnSibling(e, parentId, node.id, nodes)}
                             onClick={(e) => e.stopPropagation()}
                         >
                             ⋮⋮
@@ -371,6 +495,15 @@ const BacklogPage = ({ focus }) => {
                         )}
                         <span className="cat-color-dot" style={{ backgroundColor: node.color || '#89b4fa' }} />
                         <span className="cat-name">{node.name}</span>
+                        {Number(node.task_count_total ?? node.task_count ?? 0) > 0 && (
+                            <span
+                                className="cat-count"
+                                title={`${Number(node.task_count_total ?? node.task_count ?? 0)} tasks (incl. sub-folders)`}
+                                aria-label={`${Number(node.task_count_total ?? node.task_count ?? 0)} tasks (including sub-folders)`}
+                            >
+                                {Number(node.task_count_total ?? node.task_count ?? 0)}
+                            </span>
+                        )}
                         {defaultCategoryId === node.id && (
                             <span className="default-folder-star" title="Default folder" aria-label="Default folder">
                                 ★
@@ -399,21 +532,40 @@ const BacklogPage = ({ focus }) => {
             <div className="backlog-sidebar">
                 <div className="sidebar-header">
                     <h3>Folders</h3>
-                    <button onClick={() => setShowCreateCat(true)} title="New Folder">+</button>
+                    <button type="button" onClick={openCreateCategory} title="New Folder">+</button>
                 </div>
 
                 {showCreateCat && (
                     <form onSubmit={handleCreateCategory} className="mini-form">
                         <input
+                            ref={createCatInputRef}
                             autoFocus
                             placeholder="Folder Name"
                             value={newCatName}
                             onChange={e => setNewCatName(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Escape') {
+                                    setShowCreateCat(false);
+                                    setNewCatName('');
+                                }
+                            }}
                         />
                     </form>
                 )}
 
-                <div className="tree-container">
+                <div
+                    className="tree-container"
+                    onDragOver={(e) => {
+                        if (!draggingCategory) return;
+                        const movingId = parseDragCategoryId(e);
+                        if (!movingId) return;
+                        if ((getCategoryParentId(movingId) ?? null) === null) return;
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = 'move';
+                        setDragOverCategoryId(null);
+                    }}
+                    onDrop={(e) => handleMoveCategory(e, null)}
+                >
                     {renderTree(categories)}
                 </div>
             </div>
@@ -460,10 +612,17 @@ const BacklogPage = ({ focus }) => {
                         {showCreateTask ? (
                             <form onSubmit={handleCreateTask} className="task-create-form">
                                 <input
+                                    ref={createTaskInputRef}
                                     autoFocus
                                     placeholder="Task Title"
                                     value={newTaskTitle}
                                     onChange={e => setNewTaskTitle(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Escape') {
+                                            setShowCreateTask(false);
+                                            setNewTaskTitle('');
+                                        }
+                                    }}
                                 />
                                 <button type="submit" className="primary-btn">Create</button>
                                 <button type="button" onClick={() => setShowCreateTask(false)}>Cancel</button>

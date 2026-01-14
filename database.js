@@ -248,9 +248,49 @@ module.exports = {
     // Categories
     getCategories: async () => {
         const st = getState();
-        return st.categories
+        const categories = st.categories
             .filter((c) => !c.archived)
-            .slice()
+            .map((c) => ({ ...c }));
+
+        const directCounts = new Map();
+        st.tasks.forEach((t) => {
+            if (t.archived) return;
+            const categoryId = Number(t.category_id);
+            if (!Number.isFinite(categoryId) || categoryId <= 0) return;
+            directCounts.set(categoryId, (directCounts.get(categoryId) || 0) + 1);
+        });
+
+        const categoryById = new Map();
+        const childrenByParent = new Map();
+        categories.forEach((c) => {
+            const id = Number(c.id);
+            categoryById.set(id, c);
+            const parentId = c.parent_id ?? null;
+            if (!childrenByParent.has(parentId)) childrenByParent.set(parentId, []);
+            childrenByParent.get(parentId).push(id);
+        });
+
+        const totalCounts = new Map();
+        const visiting = new Set();
+        const computeTotal = (categoryId) => {
+            if (totalCounts.has(categoryId)) return totalCounts.get(categoryId);
+            if (visiting.has(categoryId)) return directCounts.get(categoryId) || 0;
+            visiting.add(categoryId);
+            const direct = directCounts.get(categoryId) || 0;
+            const children = childrenByParent.get(categoryId) || [];
+            const total = children.reduce((sum, childId) => sum + computeTotal(childId), direct);
+            totalCounts.set(categoryId, total);
+            visiting.delete(categoryId);
+            return total;
+        };
+
+        categories.forEach((c) => {
+            const id = Number(c.id);
+            c.task_count = directCounts.get(id) || 0;
+            c.task_count_total = computeTotal(id);
+        });
+
+        return categories
             .sort((a, b) => {
                 const ap = a.parent_id == null ? 0 : 1;
                 const bp = b.parent_id == null ? 0 : 1;
@@ -779,4 +819,3 @@ module.exports = {
             });
     },
 };
-
