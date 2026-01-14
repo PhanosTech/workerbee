@@ -1,6 +1,8 @@
 node_modules
 dist
+bin
 .DS_Store
 *.db
 *.db-journal
+workbee.json
 bin/
