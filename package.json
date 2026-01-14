@@ -2,24 +2,27 @@
   "name": "workbee",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "main.js",
   "scripts": {
     "dev": "concurrently --kill-others-on-fail --names api,web \"npm run server\" \"npm run client\"",
     "client": "vite",
     "server": "nodemon server.js",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "electron": "electron .",
+    "pack": "electron-builder --dir",
+    "pack:win": "electron-builder --win --x64 --dir"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@tiptap/extension-image": "^3.15.3",
     "@tiptap/extension-link": "^3.15.3",
     "@tiptap/extension-placeholder": "^3.15.3",
     "@tiptap/react": "^3.15.3",
     "@tiptap/starter-kit": "^3.15.3",
-    "better-sqlite3": "^12.6.0",
     "body-parser": "^2.2.2",
     "cors": "^2.8.5",
     "express": "^5.2.1",
@@ -29,8 +32,36 @@
   "devDependencies": {
     "@vitejs/plugin-react": "^5.1.2",
     "concurrently": "^9.2.1",
+    "electron": "^28.2.0",
+    "electron-builder": "^24.9.1",
     "nodemon": "^3.1.11",
     "vite": "^7.3.1",
     "vite-plugin-pwa": "^1.2.0"
+  },
+  "build": {
+    "productName": "WorkerBee",
+    "appId": "com.workbee.app",
+    "asar": false,
+    "files": [
+      "main.js",
+      "package.json",
+      "electron/**",
+      "dist/**",
+      "server.js",
+      "database.js",
+      "logo.png",
+      "favicon.ico"
+    ],
+    "directories": {
+      "output": "bin"
+    },
+    "win": {
+      "target": "dir",
+      "icon": "favicon.ico"
+    },
+    "linux": {
+      "target": "dir"
+    },
+    "extraResources": []
   }
 }

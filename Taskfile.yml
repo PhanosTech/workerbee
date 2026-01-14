@@ -1,10 +1,9 @@
 version: '3'
 
 vars:
-  NODE_BIN: /opt/tools/node/bin
-  NODE: '{{.NODE_BIN}}/node'
-  NPM: '{{.NODE_BIN}}/npm'
-  NPX: '{{.NODE_BIN}}/npx'
+  # Rely on PATH for node/npm to ensure cross-platform compatibility (Windows/Linux/Mac)
+  NODE: node
+  NPM: npm
   WEB_PORT: 9229
   API_PORT: 9339
 
@@ -13,11 +12,19 @@ tasks:
     cmds:
       - echo "Checking Taskfile... use 'task --list' to see available tasks"
 
+  clean:
+    desc: Clean build outputs (bin/, dist/)
+    cmds:
+      - >-
+        {{.NODE}} -e "const fs=require('fs'); const path=require('path'); const targets=['bin','dist','dist-ssr']; for (const t of targets){ try{ fs.rmSync(path.join(process.cwd(),t), {recursive:true, force:true}); } catch(e){} } console.log('Cleaned: ' + targets.join(', '));"
+
   cleanup:
     desc: Clean up build artifacts and node_modules
     cmds:
-      - rm -rf node_modules dist dist-ssr
+      # Use rimraf if available, or try standard rm (might fail on standard CMD)
+      - '{{.NPM}} run rimraf -- node_modules dist dist-ssr || rm -rf node_modules dist dist-ssr'
       - echo "Cleanup complete."
+    ignore_error: true
 
   init:
     desc: Initialize project and install dependencies
@@ -42,3 +49,30 @@ tasks:
       NODE_ENV: production
       WEB_PORT: '{{.WEB_PORT}}'
       API_PORT: '{{.API_PORT}}'
+
+  init_win:
+    desc: Install dependencies (including Electron items)
+    cmds:
+      - '{{.NODE}} -e "if (process.platform !== ''win32'') { console.error(''init_win must be run on Windows.''); process.exit(1) }"'
+      - '{{.NPM}} install'
+      - npx electron-builder install-app-deps
+
+  pkg_win:
+    desc: Package for Windows
+    cmds:
+      - '{{.NODE}} -e "if (process.platform !== ''win32'') { console.error(''pkg_win must be run on Windows (or a Windows CI runner) because sqlite3 must be rebuilt for win32/Electron.''); process.exit(1) }"'
+      - '{{.NPM}} run build'
+      - '{{.NPM}} run pack:win'
+    env:
+      NODE_ENV: production
+
+  pkg_win_cross:
+    desc: Attempt a Windows build from Linux/macOS (may fail due to native deps)
+    platforms: [linux, darwin]
+    cmds:
+      - 'echo "Cross-building Windows on {{OS}} requires Windows rebuilds for native deps (sqlite3)."'
+      - 'echo "Recommended: run task pkg_win on a Windows machine (or CI Windows runner)."'
+      - 'echo "This task does not produce a working Windows build from {{OS}}; it will exit now."'
+      - 'false'
+    env:
+      NODE_ENV: production

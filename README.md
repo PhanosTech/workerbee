@@ -16,6 +16,12 @@ Single-user task manager with work logs and reporting, designed to run locally (
   - UI: `http://127.0.0.1:9229`
   - API: `http://127.0.0.1:9339`
 
+## Desktop packaging (Windows)
+
+- Windows builds can be produced without Visual Studio build tools (no native modules).
+- Install deps (Windows): `task init_win`
+- Build (Windows): `task pkg_win` (or `npm run build && npm run pack:win`)
+
 ## Data
 
-- SQLite DB: `workbee.db` (created in the project root)
+- Local data file: `workbee.json` (created in the project root)

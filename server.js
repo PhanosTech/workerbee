@@ -11,6 +11,12 @@ const WEB_PORT = Number(process.env.WEB_PORT || 9229);
 app.use(cors());
 app.use(bodyParser.json());
 
+// Ensure DB schema/migrations are applied before serving requests.
+db.init?.().catch((err) => {
+    console.error('Failed to initialize database:', err);
+    process.exit(1);
+});
+
 // Helpful dev landing page (the UI is served by Vite during development)
 if (process.env.NODE_ENV !== 'production') {
     app.get('/', (req, res) => {
@@ -26,48 +32,48 @@ if (process.env.NODE_ENV !== 'production') {
 
 // API Endpoints
 // Categories
-app.get('/api/categories', (req, res) => {
+app.get('/api/categories', async (req, res) => {
     try {
-        const rows = db.getCategories();
+        const rows = await db.getCategories();
         res.json(rows);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
 
-app.post('/api/categories', (req, res) => {
+app.post('/api/categories', async (req, res) => {
     try {
         const { parent_id, name, color } = req.body;
-        const result = db.createCategory(parent_id, name, color);
+        const result = await db.createCategory(parent_id, name, color);
         res.json(result);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
 
-app.put('/api/categories/:id', (req, res) => {
-    try {
-        const { parent_id, name, color, position } = req.body;
-        const result = db.updateCategory(req.params.id, parent_id, name, color, position);
-        res.json(result);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-app.put('/api/categories/reorder', (req, res) => {
+app.put('/api/categories/reorder', async (req, res) => {
     try {
         const { parent_id, ordered_ids } = req.body;
-        const result = db.reorderCategories(parent_id ?? null, ordered_ids || []);
+        const result = await db.reorderCategories(parent_id ?? null, ordered_ids || []);
         res.json(result);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
 
-app.delete('/api/categories/:id', (req, res) => {
+app.put('/api/categories/:id', async (req, res) => {
     try {
-        const result = db.archiveCategory(req.params.id);
+        const { parent_id, name, color, position } = req.body;
+        const result = await db.updateCategory(req.params.id, parent_id, name, color, position);
+        res.json(result);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete('/api/categories/:id', async (req, res) => {
+    try {
+        const result = await db.archiveCategory(req.params.id);
         res.json(result);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -75,39 +81,69 @@ app.delete('/api/categories/:id', (req, res) => {
 });
 
 // Label Notes (Category Notes)
-app.get('/api/categories/:id/notes', (req, res) => {
+app.get('/api/categories/:id/notes', async (req, res) => {
     try {
         const { type } = req.query;
-        const rows = db.getLabelNotes(req.params.id, type);
+        const rows = await db.getLabelNotes(req.params.id, type);
         res.json(rows);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
 
-app.post('/api/categories/:id/notes', (req, res) => {
+app.post('/api/categories/:id/notes', async (req, res) => {
     try {
         const { title, content, type } = req.body;
-        const result = db.addLabelNote(req.params.id, title, content, type);
+        const result = await db.addLabelNote(req.params.id, title, content, type);
         res.json(result);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
 
-app.put('/api/label_notes/:id', (req, res) => {
+app.get('/api/label_notes/:id', async (req, res) => {
+    try {
+        const row = await db.getLabelNote(req.params.id);
+        if (!row) {
+            return res.status(404).json({ error: 'Note not found' });
+        }
+        res.json(row);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.put('/api/label_notes/:id', async (req, res) => {
     try {
         const { title, content } = req.body;
-        const result = db.updateLabelNote(req.params.id, title, content);
+        const result = await db.updateLabelNote(req.params.id, title, content);
         res.json(result);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
 
-app.delete('/api/label_notes/:id', (req, res) => {
+app.delete('/api/label_notes/:id', async (req, res) => {
     try {
-        const result = db.deleteLabelNote(req.params.id);
+        const result = await db.deleteLabelNote(req.params.id);
+        res.json(result);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/label_notes/:id/archive', async (req, res) => {
+    try {
+        const result = await db.archiveLabelNote(req.params.id);
+        res.json(result);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/label_notes/:id/unarchive', async (req, res) => {
+    try {
+        const result = await db.unarchiveLabelNote(req.params.id);
         res.json(result);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -115,20 +151,22 @@ app.delete('/api/label_notes/:id', (req, res) => {
 });
 
 // Tasks
-app.get('/api/tasks', (req, res) => {
+app.get('/api/tasks', async (req, res) => {
     try {
         const { status, category_id } = req.query;
         let rows;
         if (status) {
-            rows = db.getTasksByStatus(status);
+            rows = await db.getTasksByStatus(status);
         } else if (category_id) {
             const includeDesc =
                 req.query.include_descendants === '1' ||
                 req.query.include_descendants === 'true' ||
                 req.query.include_descendants === 'yes';
-            rows = includeDesc ? db.getTasksByCategoryWithDescendants(category_id) : db.getTasksByCategory(category_id);
+            rows = includeDesc
+                ? await db.getTasksByCategoryWithDescendants(category_id)
+                : await db.getTasksByCategory(category_id);
         } else {
-            rows = db.getAllTasks();
+            rows = await db.getAllTasks();
         }
         res.json(rows);
     } catch (err) {
@@ -136,47 +174,47 @@ app.get('/api/tasks', (req, res) => {
     }
 });
 
-app.get('/api/tasks/:id', (req, res) => {
+app.get('/api/tasks/:id', async (req, res) => {
     try {
-        const row = db.getTask(req.params.id);
+        const row = await db.getTask(req.params.id);
         if (!row) {
             return res.status(404).json({ error: 'Task not found' });
         }
-        const todos = db.getTaskTodos(req.params.id);
-        const logs = db.getTaskLogs(req.params.id);
-        const notes = db.getTaskNotes(req.params.id);
+        const todos = await db.getTaskTodos(req.params.id);
+        const logs = await db.getTaskLogs(req.params.id);
+        const notes = await db.getTaskNotes(req.params.id);
         res.json({ ...row, todos, logs, notes });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
 
-app.post('/api/tasks', (req, res) => {
+app.post('/api/tasks', async (req, res) => {
     try {
         const { category_id, title, description, url } = req.body;
-        const result = db.createTask(category_id, title, description, url);
+        const result = await db.createTask(category_id, title, description, url);
         res.json(result);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
 
-app.put('/api/tasks/reorder', (req, res) => {
+app.put('/api/tasks/reorder', async (req, res) => {
     try {
         const { status, ordered_ids } = req.body || {};
         if (!status || !Array.isArray(ordered_ids)) {
             return res.status(400).json({ error: 'status and ordered_ids are required' });
         }
-        const result = db.reorderTasksInStatus(status, ordered_ids);
+        const result = await db.reorderTasksInStatus(status, ordered_ids);
         res.json(result);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
 
-app.put('/api/tasks/:id', (req, res) => {
+app.put('/api/tasks/:id', async (req, res) => {
     try {
-        const existing = db.getTask(req.params.id);
+        const existing = await db.getTask(req.params.id);
         if (!existing) {
             return res.status(404).json({ error: 'Task not found' });
         }
@@ -193,7 +231,7 @@ app.put('/api/tasks/:id', (req, res) => {
         const priority = has('priority') ? body.priority : existing.priority;
         const task_type = has('task_type') ? body.task_type : existing.task_type;
 
-        const result = db.updateTask(
+        const result = await db.updateTask(
             req.params.id,
             category_id,
             title,
@@ -210,18 +248,18 @@ app.put('/api/tasks/:id', (req, res) => {
     }
 });
 
-app.delete('/api/tasks/:id', (req, res) => {
+app.delete('/api/tasks/:id', async (req, res) => {
     try {
-        const result = db.archiveTask(req.params.id);
+        const result = await db.archiveTask(req.params.id);
         res.json(result);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
 
-app.post('/api/tasks/archive_done', (req, res) => {
+app.post('/api/tasks/archive_done', async (req, res) => {
     try {
-        const result = db.archiveDoneTasks();
+        const result = await db.archiveDoneTasks();
         res.json(result);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -229,68 +267,68 @@ app.post('/api/tasks/archive_done', (req, res) => {
 });
 
 // Task Sub-resources (Todos, Logs, Notes)
-app.post('/api/tasks/:id/todos', (req, res) => {
+app.post('/api/tasks/:id/todos', async (req, res) => {
     try {
         const { text } = req.body;
-        const result = db.addTodo(req.params.id, text);
+        const result = await db.addTodo(req.params.id, text);
         res.json(result);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
 
-app.put('/api/todos/:id', (req, res) => {
+app.put('/api/todos/:id', async (req, res) => {
     try {
         const { text, completed } = req.body;
-        const result = db.updateTodo(req.params.id, text, completed);
+        const result = await db.updateTodo(req.params.id, text, completed);
         res.json(result);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
 
-app.delete('/api/todos/:id', (req, res) => {
+app.delete('/api/todos/:id', async (req, res) => {
     try {
-        const result = db.deleteTodo(req.params.id);
+        const result = await db.deleteTodo(req.params.id);
         res.json(result);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
 
-app.post('/api/tasks/:id/logs', (req, res) => {
+app.post('/api/tasks/:id/logs', async (req, res) => {
     try {
         const { content } = req.body;
-        const result = db.addLog(req.params.id, content);
+        const result = await db.addLog(req.params.id, content);
         res.json(result);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
 
-app.post('/api/tasks/:id/notes', (req, res) => {
+app.post('/api/tasks/:id/notes', async (req, res) => {
     try {
         const { title, content, type } = req.body;
-        const result = db.addNote(req.params.id, title, content, type);
+        const result = await db.addNote(req.params.id, title, content, type);
         res.json(result);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
 
-app.put('/api/notes/:id', (req, res) => {
+app.put('/api/notes/:id', async (req, res) => {
     try {
         const { title, content } = req.body;
-        const result = db.updateNote(req.params.id, title, content);
+        const result = await db.updateNote(req.params.id, title, content);
         res.json(result);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
 
-app.delete('/api/notes/:id', (req, res) => {
+app.delete('/api/notes/:id', async (req, res) => {
     try {
-        const result = db.deleteNote(req.params.id);
+        const result = await db.deleteNote(req.params.id);
         res.json(result);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -298,29 +336,55 @@ app.delete('/api/notes/:id', (req, res) => {
 });
 
 // Reports (Get Logs)
-app.get('/api/reports', (req, res) => {
+app.get('/api/reports', async (req, res) => {
     try {
         const { startDate, endDate } = req.query;
         // Default to last 7 days if not provided
         const end = endDate || new Date().toISOString().split('T')[0];
         const start = startDate || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
-        const rows = db.getLogsByDateRange(start, end);
+        const rows = await db.getLogsByDateRange(start, end);
         res.json(rows);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
 
-app.get('/api/reports/summary', (req, res) => {
+app.get('/api/reports/summary', async (req, res) => {
     try {
         const { startDate, endDate } = req.query;
         const end = endDate || new Date().toISOString().split('T')[0];
         const start = startDate || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
-        const logs = db.getLogsByDateRange(start, end);
-        const completedTasks = db.getTasksCompletedByDateRange(start, end);
+        const logs = await db.getLogsByDateRange(start, end);
+        const completedTasks = await db.getTasksCompletedByDateRange(start, end);
         res.json({ startDate: start, endDate: end, logs, completedTasks });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Archived items (rarely used retrieval)
+app.get('/api/archive', async (req, res) => {
+    try {
+        const { startDate, endDate, weeks } = req.query;
+
+        const end =
+            endDate ||
+            new Date().toISOString().split('T')[0];
+
+        const start =
+            startDate ||
+            (weeks
+                ? new Date(Date.now() - Number(weeks) * 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+                : new Date(Date.now() - 4 * 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
+
+        const [tasks, notes] = await Promise.all([
+            db.getArchivedTasksByDateRange(start, end),
+            db.getArchivedLabelNotesByDateRange(start, end),
+        ]);
+
+        res.json({ startDate: start, endDate: end, tasks, notes });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -330,7 +394,9 @@ app.get('/api/reports/summary', (req, res) => {
 // Serve static files in production
 if (process.env.NODE_ENV === 'production') {
     app.use(express.static(path.join(__dirname, 'dist')));
-    app.get('*', (req, res) => {
+    // Express 5 + path-to-regexp no longer supports a bare "*" route.
+    // Also avoid hijacking unknown `/api/*` routes (let them 404 instead).
+    app.get(/^\/(?!api\b).*/, (req, res) => {
         res.sendFile(path.join(__dirname, 'dist', 'index.html'));
     });
 }

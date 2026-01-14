@@ -1,0 +1,2 @@
+require('./electron/main.js');
+

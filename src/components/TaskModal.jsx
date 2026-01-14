@@ -61,7 +61,8 @@ const TaskModal = ({ taskId, onClose, onUpdate }) => {
             status: nextTask.status,
             story_points: nextTask.story_points,
             priority: nextTask.priority,
-            task_type: nextTask.task_type
+            task_type: nextTask.task_type,
+            due_date: nextTask.due_date
         });
         onUpdate();
         onClose();
@@ -242,6 +243,14 @@ const TaskModal = ({ taskId, onClose, onUpdate }) => {
                             />
                         </section>
                         <section>
+                            <label>Due Date</label>
+                            <input
+                                type="date"
+                                value={task.due_date ? task.due_date.split('T')[0] : ''}
+                                onChange={e => setTask({ ...task, due_date: e.target.value })}
+                            />
+                        </section>
+                        <section>
                             <label>Story Points</label>
                             <input
                                 type="number"
@@ -254,11 +263,11 @@ const TaskModal = ({ taskId, onClose, onUpdate }) => {
                         <section>
                             <label>Priority</label>
                             <select
-                                value={(task.priority || 'MEDIUM').toUpperCase()}
+                                value={(task.priority || 'NORMAL').toUpperCase()}
                                 onChange={(e) => setTask({ ...task, priority: e.target.value })}
                             >
-                                <option value="LOW">Low</option>
-                                <option value="MEDIUM">Medium</option>
+                                <option value="NORMAL">Normal</option>
+                                <option value="IMPORTANT">Important</option>
                                 <option value="HIGH">High</option>
                             </select>
                         </section>

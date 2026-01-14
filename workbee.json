@@ -1,0 +1,19 @@
+{
+  "meta": {
+    "version": 1,
+    "lastId": {
+      "categories": 0,
+      "tasks": 0,
+      "todos": 0,
+      "logs": 0,
+      "notes": 0,
+      "label_notes": 0
+    }
+  },
+  "categories": [],
+  "tasks": [],
+  "todos": [],
+  "logs": [],
+  "notes": [],
+  "label_notes": []
+}

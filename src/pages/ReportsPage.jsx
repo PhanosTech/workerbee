@@ -2,8 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { api } from '../api';
 
 const ReportsPage = () => {
+    // Data States
     const [logs, setLogs] = useState([]);
     const [completedTasks, setCompletedTasks] = useState([]);
+    const [activeTasks, setActiveTasks] = useState([]);
+
+    // Filter States
     const [startDate, setStartDate] = useState(
         new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
     );
@@ -11,55 +15,165 @@ const ReportsPage = () => {
         new Date().toISOString().split('T')[0]
     );
 
+    // UI States
+    const [activeTab, setActiveTab] = useState('worklog'); // worklog, completed, remaining
+    const [showExportModal, setShowExportModal] = useState(false);
+    const [exportFormat, setExportFormat] = useState('html'); // html, markdown
+
     useEffect(() => {
-        loadReports();
+        loadReportData();
     }, [startDate, endDate]);
 
-    const loadReports = async () => {
-        const data = await api.getReportSummary(startDate, endDate);
-        setLogs(data.logs || []);
-        setCompletedTasks(data.completedTasks || []);
+    const loadReportData = async () => {
+        try {
+            const data = await api.getReportSummary(startDate, endDate);
+            setLogs(data.logs || []);
+            setCompletedTasks(data.completedTasks || []);
+
+            // We need to fetch active tasks separately or modify getReportSummary.
+            // For now, let's fetch all tasks and filter client side for remaining work, 
+            // OR ideally add an endpoint. 
+            // Given existing API, `api.getTasks()` gets all non-archived.
+            const allTasks = await api.getTasks();
+            const remaining = allTasks.filter(t => t.status !== 'DONE' && !t.archived);
+            setActiveTasks(remaining);
+        } catch (err) {
+            console.error("Failed to load reports", err);
+        }
     };
 
-    const handleExport = () => {
-        let text = `Work Report (${startDate} to ${endDate})\n\n`;
+    const getExportContent = () => {
+        // Generate content based on ALL data available (or just active tab? usually reports export everything)
+        // User requested "export of these reports", let's export ALL based on current date range + remaining work.
 
-        if (completedTasks.length > 0) {
-            text += `# Completed Tasks\n`;
-            completedTasks.forEach(task => {
-                const when = task.done_at ? new Date(task.done_at).toLocaleDateString() : '';
-                const label = task.category_name ? ` (${task.category_name})` : '';
-                text += `- [${when}] ${task.title}${label}\n`;
-            });
-            text += '\n';
+        if (exportFormat === 'markdown') {
+            return generateMarkdown();
+        } else {
+            return generateHtml();
         }
+    };
 
-        text += `# Work Logs\n\n`;
+    const generateMarkdown = () => {
+        let text = `# Work Report (${startDate} to ${endDate})\n\n`;
 
+        // Remaining Work
+        text += `## Remaining Work\n`;
+        if (activeTasks.length === 0) text += "_No active tasks._\n";
+        activeTasks.forEach(t => {
+            const due = t.due_date ? ` (Due: ${t.due_date.split('T')[0]})` : '';
+            text += `- **${t.title}**${due}\n  ${t.description ? t.description.replace(/\n/g, ' ') : ''}\n`;
+        });
+        text += '\n';
+
+        // Completed Tasks
+        text += `## Completed Tasks\n`;
+        if (completedTasks.length === 0) text += "_No tasks completed in this period._\n";
+        completedTasks.forEach(t => {
+            const done = t.done_at ? new Date(t.done_at).toLocaleDateString() : '';
+            text += `- [${done}] **${t.title}**\n`;
+        });
+        text += '\n';
+
+        // Work Log
+        text += `## Work Logs\n`;
+        if (logs.length === 0) text += "_No logs in this period._\n";
+        // Group by Date for markdown? Or Task? Let's do Task
         const grouped = {};
-
-        // Group by Task
-        logs.forEach(log => {
-            if (!grouped[log.task_title]) grouped[log.task_title] = [];
-            grouped[log.task_title].push(log);
+        logs.forEach(l => {
+            if (!grouped[l.task_title]) grouped[l.task_title] = [];
+            grouped[l.task_title].push(l);
         });
 
-        for (const [taskTitle, taskLogs] of Object.entries(grouped)) {
-            text += `## ${taskTitle}\n`;
-            taskLogs.forEach(log => {
-                text += `- [${new Date(log.timestamp).toLocaleDateString()}] ${log.content}\n`;
+        for (const [title, entries] of Object.entries(grouped)) {
+            text += `### ${title}\n`;
+            entries.forEach(e => {
+                text += `- ${new Date(e.timestamp).toLocaleDateString()}: ${e.content}\n`;
             });
             text += '\n';
         }
 
-        navigator.clipboard.writeText(text);
-        alert('Report copied to clipboard!');
+        return text;
+    };
+
+    const generateHtml = () => {
+        let html = `<h2>Work Report (${startDate} to ${endDate})</h2>`;
+
+        // Remaining Work
+        html += `<h3>Remaining Work</h3>`;
+        if (activeTasks.length > 0) {
+            html += `<table border="1" style="border-collapse: collapse; width: 100%;">
+                <thead>
+                    <tr style="background: #f0f0f0;">
+                        <th style="padding: 8px;">Task</th>
+                        <th style="padding: 8px;">Status</th>
+                        <th style="padding: 8px;">Due Date</th>
+                    </tr>
+                </thead>
+                <tbody>`;
+            activeTasks.forEach(t => {
+                const due = t.due_date ? t.due_date.split('T')[0] : '-';
+                html += `<tr>
+                    <td style="padding: 8px;"><strong>${t.title}</strong><br/><small>${t.description || ''}</small></td>
+                    <td style="padding: 8px;">${t.status}</td>
+                    <td style="padding: 8px;">${due}</td>
+                </tr>`;
+            });
+            html += `</tbody></table>`;
+        } else {
+            html += `<p><em>No active tasks.</em></p>`;
+        }
+
+        // Completed
+        html += `<h3>Completed Tasks</h3>`;
+        if (completedTasks.length > 0) {
+            html += `<ul>`;
+            completedTasks.forEach(t => {
+                const done = t.done_at ? new Date(t.done_at).toLocaleDateString() : '';
+                html += `<li>[${done}] <strong>${t.title}</strong></li>`;
+            });
+            html += `</ul>`;
+        } else {
+            html += `<p><em>No tasks completed.</em></p>`;
+        }
+
+        // Work Logs
+        html += `<h3>Work Logs</h3>`;
+        if (logs.length > 0) {
+            const grouped = {};
+            logs.forEach(l => {
+                if (!grouped[l.task_title]) grouped[l.task_title] = [];
+                grouped[l.task_title].push(l);
+            });
+
+            html += `<ul>`;
+            for (const [title, entries] of Object.entries(grouped)) {
+                html += `<li><strong>${title}</strong>
+                    <ul>`;
+                entries.forEach(e => {
+                    html += `<li>${new Date(e.timestamp).toLocaleDateString()}: ${e.content}</li>`;
+                });
+                html += `</ul></li>`;
+            }
+            html += `</ul>`;
+        } else {
+            html += `<p><em>No logs.</em></p>`;
+        }
+
+        return html;
+    };
+
+    const handleCopy = () => {
+        navigator.clipboard.writeText(getExportContent());
+        alert("Copied to clipboard!");
+        setShowExportModal(false);
     };
 
     return (
         <div className="page reports-page">
             <header className="page-header">
-                <h2>Reports</h2>
+                <div>
+                    <h2>Reports</h2>
+                </div>
                 <div className="controls">
                     <input
                         type="date"
@@ -72,49 +186,128 @@ const ReportsPage = () => {
                         value={endDate}
                         onChange={e => setEndDate(e.target.value)}
                     />
-                    <button className="primary-btn" onClick={handleExport}>Copy (Markdown)</button>
+                    <button className="primary-btn" onClick={() => setShowExportModal(true)}>Export Report</button>
                 </div>
             </header>
 
-            <div className="reports-body">
-                <section className="report-section">
-                    <h3 className="report-section-title">Completed Tasks</h3>
-                    <div className="report-list">
-                        {completedTasks.map(task => (
-                            <div key={task.id} className="report-item">
-                                <div className="report-meta">
-                                    <span className="date">{task.done_at ? new Date(task.done_at).toLocaleString() : '—'}</span>
-                                    <span className="task-ref">{task.title}</span>
-                                    {task.category_name && <span className="cat-badge">{task.category_name}</span>}
-                                </div>
-                                <div className="report-content">
-                                    {task.description || <span style={{ opacity: 0.6 }}>No description</span>}
-                                </div>
-                            </div>
-                        ))}
-                        {completedTasks.length === 0 && <p className="empty-state">No tasks completed for this period.</p>}
-                    </div>
-                </section>
-
-                <section className="report-section">
-                    <h3 className="report-section-title">Work Logs</h3>
-                    <div className="report-list">
-                        {logs.map(log => (
-                            <div key={log.id} className="report-item">
-                                <div className="report-meta">
-                                    <span className="date">{new Date(log.timestamp).toLocaleString()}</span>
-                                    <span className="task-ref">{log.task_title}</span>
-                                    {log.category_name && <span className="cat-badge">{log.category_name}</span>}
-                                </div>
-                                <div className="report-content">
-                                    {log.content}
-                                </div>
-                            </div>
-                        ))}
-                        {logs.length === 0 && <p className="empty-state">No logs found for this period.</p>}
-                    </div>
-                </section>
+            <div className="tabs-header" style={{ padding: '0 16px', marginTop: 10 }}>
+                <button
+                    className={`tab-btn ${activeTab === 'worklog' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('worklog')}
+                >
+                    Work Log
+                </button>
+                <button
+                    className={`tab-btn ${activeTab === 'completed' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('completed')}
+                >
+                    Completed Tasks
+                </button>
+                <button
+                    className={`tab-btn ${activeTab === 'remaining' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('remaining')}
+                >
+                    Remaining Work
+                </button>
             </div>
+
+            <div className="reports-body" style={{ marginTop: 0 }}>
+                {activeTab === 'worklog' && (
+                    <section className="report-section">
+                        <div className="report-list">
+                            {logs.map(log => (
+                                <div key={log.id} className="report-item">
+                                    <div className="report-meta">
+                                        <span className="date">{new Date(log.timestamp).toLocaleString()}</span>
+                                        <span className="task-ref">{log.task_title}</span>
+                                        {log.category_name && <span className="cat-badge">{log.category_name}</span>}
+                                    </div>
+                                    <div className="report-content">
+                                        {log.content}
+                                    </div>
+                                </div>
+                            ))}
+                            {logs.length === 0 && <p className="empty-state">No logs found for this period.</p>}
+                        </div>
+                    </section>
+                )}
+
+                {activeTab === 'completed' && (
+                    <section className="report-section">
+                        <div className="report-list">
+                            {completedTasks.map(task => (
+                                <div key={task.id} className="report-item">
+                                    <div className="report-meta">
+                                        <span className="date">{task.done_at ? new Date(task.done_at).toLocaleString() : '—'}</span>
+                                        <span className="task-ref">{task.title}</span>
+                                        {task.category_name && <span className="cat-badge">{task.category_name}</span>}
+                                    </div>
+                                    <div className="report-content">
+                                        {task.description || <span style={{ opacity: 0.6 }}>No description</span>}
+                                    </div>
+                                </div>
+                            ))}
+                            {completedTasks.length === 0 && <p className="empty-state">No tasks completed for this period.</p>}
+                        </div>
+                    </section>
+                )}
+
+                {activeTab === 'remaining' && (
+                    <section className="report-section">
+                        <div className="report-list">
+                            {activeTasks.map(task => (
+                                <div key={task.id} className="report-item">
+                                    <div className="report-meta">
+                                        <span className="status-badge" style={{ marginRight: 8 }}>{task.status}</span>
+                                        <span className="task-ref">{task.title}</span>
+                                        {task.due_date && <span className="date" style={{ color: 'var(--accent-color)' }}>Due: {task.due_date.split('T')[0]}</span>}
+                                    </div>
+                                    <div className="report-content">
+                                        {task.description || <span style={{ opacity: 0.6 }}>No description</span>}
+                                    </div>
+                                </div>
+                            ))}
+                            {activeTasks.length === 0 && <p className="empty-state">No active tasks (Backlog/Doing).</p>}
+                        </div>
+                    </section>
+                )}
+            </div>
+
+            {showExportModal && (
+                <div className="modal-overlay" onMouseDown={e => { if (e.target === e.currentTarget) setShowExportModal(false) }}>
+                    <div className="modal-content" style={{ width: '800px', height: '80vh', display: 'flex', flexDirection: 'column' }}>
+                        <div className="modal-header">
+                            <h3>Export Report</h3>
+                            <button className="close-btn" onClick={() => setShowExportModal(false)}>&times;</button>
+                        </div>
+                        <div style={{ marginBottom: 16 }}>
+                            <div className="notes-tabbar">
+                                <button
+                                    className={`notes-tab ${exportFormat === 'html' ? 'active' : ''}`}
+                                    onClick={() => setExportFormat('html')}
+                                >
+                                    HTML (Outlook)
+                                </button>
+                                <button
+                                    className={`notes-tab ${exportFormat === 'markdown' ? 'active' : ''}`}
+                                    onClick={() => setExportFormat('markdown')}
+                                >
+                                    Markdown
+                                </button>
+                            </div>
+                        </div>
+                        <div style={{ flex: 1, overflow: 'auto', background: 'var(--input-bg)', padding: 16, borderRadius: 8, border: '1px solid var(--border-subtle)' }}>
+                            <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace', margin: 0 }}>
+                                {getExportContent()}
+                            </pre>
+                        </div>
+                        <div className="modal-actions" style={{ justifyContent: 'flex-end', marginTop: 16, display: 'flex', gap: 10 }}>
+                            <button onClick={() => setShowExportModal(false)}>Close</button>
+                            <button className="primary-btn" onClick={handleCopy}>Copy to Clipboard</button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

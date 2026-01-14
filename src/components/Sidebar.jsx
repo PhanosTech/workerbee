@@ -11,10 +11,16 @@ const Sidebar = ({ activeTab, setActiveTab }) => {
             </div>
             <ul>
                 <li
-                    className={activeTab === 'active' ? 'active' : ''}
-                    onClick={() => setActiveTab('active')}
+                    className={activeTab === 'notes' ? 'active' : ''}
+                    onClick={() => setActiveTab('notes')}
                 >
-                    <span className="icon">⚡</span> Currently Doing
+                    <span className="icon">📝</span> Notes
+                </li>
+                <li
+                    className={activeTab === 'kanban' ? 'active' : ''}
+                    onClick={() => setActiveTab('kanban')}
+                >
+                    <span className="icon">⚡</span> Kanban
                 </li>
                 <li
                     className={activeTab === 'backlog' ? 'active' : ''}

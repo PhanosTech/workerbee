@@ -213,7 +213,7 @@ const ActivePage = ({ onOpenInBacklog }) => {
         <div className="page active-page">
             <header className="page-header">
                 <div>
-                    <h2 style={{ margin: 0 }}>Currently Doing</h2>
+                    <h2 style={{ margin: 0 }}>Kanban</h2>
                     <div className="muted" style={{ marginTop: 6 }}>Drag cards between lanes.</div>
                 </div>
                 <div className="controls">
@@ -255,7 +255,7 @@ const ActivePage = ({ onOpenInBacklog }) => {
                                 return (
                                     <div
                                         key={task.id}
-                                        className={`kanban-card priority-${String(task.priority || 'MEDIUM').toLowerCase()} ${taskType?.className || ''}`}
+                                        className={`kanban-card priority-${String(task.priority || 'NORMAL').toLowerCase()} ${taskType?.className || ''}`}
                                         style={{ '--label-color': labelColor, '--label-rgb': labelRgb }}
                                         draggable
                                         onDragStart={(e) => {

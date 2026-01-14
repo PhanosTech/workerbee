@@ -3,6 +3,7 @@ import TopNav from './components/TopNav';
 import ActivePage from './pages/ActivePage';
 import ReportsPage from './pages/ReportsPage';
 import BacklogPage from './pages/BacklogPage';
+import NotesPage from './pages/NotesPage';
 import './styles/main.css';
 
 const VALID_THEMES = new Set(['midnight', 'graphite', 'ocean', 'ember', 'amethyst', 'nord', 'forest', 'light']);
@@ -16,9 +17,26 @@ const getInitialTheme = () => {
 };
 
 function App() {
-    const [activeTab, setActiveTab] = useState('active');
+    const [activeTab, setActiveTab] = useState('kanban');
     const [backlogFocus, setBacklogFocus] = useState(null); // { taskId, categoryId, nonce }
+    const [notesFocus, setNotesFocus] = useState(null); // { noteId, nonce }
     const [theme, setTheme] = useState(getInitialTheme);
+
+    useEffect(() => {
+        const parseHash = () => {
+            const hash = String(window.location.hash || '').replace(/^#/, '');
+            const match = hash.match(/^\/notes\/(\d+)\s*$/);
+            if (match) {
+                const noteId = Number(match[1]);
+                setActiveTab('notes');
+                setNotesFocus({ noteId, nonce: Date.now() });
+            }
+        };
+
+        parseHash();
+        window.addEventListener('hashchange', parseHash);
+        return () => window.removeEventListener('hashchange', parseHash);
+    }, []);
 
     useEffect(() => {
         document.documentElement.dataset.theme = theme;
@@ -39,8 +57,9 @@ function App() {
     return (
         <div className="app-container">
             <TopNav activeTab={activeTab} setActiveTab={setActiveTab} theme={theme} setTheme={setTheme} />
-            <main className="content" role="main">
-                {activeTab === 'active' && <ActivePage onOpenInBacklog={openTaskInBacklog} />}
+            <main className={`content ${activeTab === 'notes' ? 'content-notes' : ''}`} role="main">
+                {activeTab === 'kanban' && <ActivePage onOpenInBacklog={openTaskInBacklog} />}
+                {activeTab === 'notes' && <NotesPage focus={notesFocus} />}
                 {activeTab === 'backlog' && <BacklogPage focus={backlogFocus} />}
                 {activeTab === 'reports' && <ReportsPage />}
             </main>

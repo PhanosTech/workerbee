@@ -286,6 +286,10 @@
     flex-direction: column;
 }
 
+.content.content-notes {
+    padding: 0;
+}
+
 /* Modal Styles */
 .modal-overlay {
     position: fixed;
@@ -382,7 +386,7 @@
     margin: 0;
 }
 
-.task-col.task-col-properties section + section {
+.task-col.task-col-properties section+section {
     padding-top: 10px;
     border-top: 1px solid var(--border-faint);
 }
@@ -699,7 +703,7 @@ textarea:focus-visible {
     word-break: break-word;
 }
 
-.todo-item input[type="checkbox"]:checked + span {
+.todo-item input[type="checkbox"]:checked+span {
     text-decoration: line-through;
     text-decoration-thickness: 2px;
     text-decoration-color: var(--text-muted);
@@ -1066,12 +1070,12 @@ textarea:focus-visible {
     box-shadow: 0 10px 22px rgba(0, 0, 0, 0.28), 0 10px 22px rgba(var(--label-rgb, 137, 180, 250), 0.18);
 }
 
-.kanban-card.priority-low {
-    border-left-color: #a6e3a1;
+.kanban-card.priority-normal {
+    border-left-color: var(--border-strong);
 }
 
-.kanban-card.priority-medium {
-    border-left-color: var(--accent-color);
+.kanban-card.priority-important {
+    border-left-color: #f9e2af;
 }
 
 .kanban-card.priority-high {
@@ -1260,13 +1264,16 @@ textarea:focus-visible {
     .task-modal-grid {
         grid-template-columns: 1fr;
     }
+
     .task-modal-status {
         min-width: 0;
     }
+
     .task-modal-footer {
         flex-direction: column;
         align-items: stretch;
     }
+
     .task-modal-actions {
         justify-content: flex-start;
     }
@@ -1576,6 +1583,19 @@ textarea:focus-visible {
     outline: none;
 }
 
+.tiptap-content .ProseMirror img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    border-radius: 10px;
+    border: 1px solid var(--border-faint);
+}
+
+.tiptap-content .ProseMirror .ProseMirror-selectednode {
+    outline: 2px solid var(--accent-color);
+    border-radius: 10px;
+}
+
 .tiptap-content .ProseMirror p.is-editor-empty:first-child::before {
     content: attr(data-placeholder);
     float: left;
@@ -1697,4 +1717,284 @@ textarea:focus-visible {
     margin-bottom: 8px;
     display: flex;
     justify-content: space-between;
+}
+
+/* Reports Styles */
+.reports-page .tabs-header {
+    border-color: var(--border-strong);
+}
+
+.report-item {
+    background: var(--card-bg);
+    padding: 12px;
+    border-radius: var(--border-radius);
+    border: 1px solid var(--border-subtle);
+    margin-bottom: 8px;
+}
+
+.report-meta {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 6px;
+    font-size: 0.9rem;
+}
+
+.report-meta .date {
+    opacity: 0.6;
+    font-family: monospace;
+}
+
+.report-meta .task-ref {
+    font-weight: 600;
+    color: var(--accent-color);
+}
+
+.cat-badge {
+    background: var(--panel-bg-3);
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    opacity: 0.8;
+}
+
+.report-content {
+    opacity: 0.9;
+    font-size: 0.95rem;
+    white-space: pre-wrap;
+}
+
+/* Notes Page */
+.notes-page {
+    height: 100%;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 320px minmax(0, 1fr);
+    background: var(--bg-color);
+}
+
+.notes-sidebar {
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    background: linear-gradient(180deg, var(--panel-bg-3), transparent 160px), var(--sidebar-bg);
+    border-right: 1px solid var(--border-subtle);
+}
+
+.notes-sidebar-header {
+    padding: 14px 14px 10px;
+    border-bottom: 1px solid var(--border-faint);
+}
+
+.notes-sidebar-header h2 {
+    margin: 0;
+    font-size: 1rem;
+    letter-spacing: 0.2px;
+    color: var(--text-strong);
+}
+
+.notes-sidebar-content {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 10px 10px 14px;
+}
+
+.notes-tree-row {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border-radius: 10px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    user-select: none;
+}
+
+.notes-tree-row:hover {
+    background: var(--control-bg-hover);
+}
+
+.notes-tree-row.active {
+    background: var(--control-bg);
+    border-color: var(--border-strong);
+}
+
+.notes-tree-main {
+    flex: 1;
+    min-width: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: transparent;
+    border: none;
+    padding: 0;
+    color: inherit;
+    cursor: pointer;
+}
+
+.notes-tree-title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 600;
+    opacity: 0.92;
+}
+
+.notes-tree-note .notes-tree-title {
+    font-weight: 500;
+    opacity: 0.85;
+}
+
+.notes-tree-twist {
+    display: inline-block;
+    width: 14px;
+    opacity: 0.7;
+    transform: rotate(0deg);
+    transition: transform 120ms ease;
+}
+
+.notes-tree-twist.open {
+    transform: rotate(90deg);
+}
+
+.notes-tree-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.18);
+}
+
+.notes-tree-icon {
+    width: 18px;
+    text-align: center;
+    opacity: 0.9;
+}
+
+.notes-tree-action {
+    width: 26px;
+    height: 26px;
+    border-radius: 8px;
+    border: 1px solid var(--border-strong);
+    background: transparent;
+    color: var(--text-color);
+    opacity: 0;
+    transition: opacity 120ms ease, background 120ms ease;
+    cursor: pointer;
+}
+
+.notes-tree-category:hover .notes-tree-action {
+    opacity: 1;
+}
+
+.notes-tree-action:hover {
+    background: var(--control-bg);
+}
+
+.notes-tree-children {
+    margin-left: 12px;
+    padding-left: 8px;
+    border-left: 1px solid var(--border-faint);
+}
+
+.notes-tree-empty {
+    padding: 6px 10px;
+    font-size: 0.9rem;
+    opacity: 0.65;
+    font-style: italic;
+}
+
+.notes-editor-area {
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.note-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border-subtle);
+    background: linear-gradient(180deg, var(--panel-bg-3), transparent 140px), var(--sidebar-bg);
+}
+
+.note-header-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.note-header-actions button {
+    margin-right: 0;
+}
+
+.note-title-input {
+    flex: 1;
+    min-width: 0;
+    font-size: 1.1rem;
+    font-weight: 800;
+    color: var(--text-color);
+    background: transparent;
+    border: 1px solid transparent;
+    padding: 8px 10px;
+    border-radius: 10px;
+}
+
+.note-title-input:focus {
+    outline: none;
+    border-color: var(--border-strong);
+    background: var(--input-bg);
+}
+
+.note-editor-wrapper {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    padding: 10px 12px 14px;
+}
+
+.note-editor-wrapper .tiptap-container {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 0;
+}
+
+.note-editor-wrapper .tiptap-toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--sidebar-bg);
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.note-editor-wrapper .tiptap-content {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 16px;
+}
+
+.notes-empty-state {
+    height: 100%;
+    display: grid;
+    place-items: center;
+    text-align: center;
+    opacity: 0.75;
+}
+
+.notes-empty-icon {
+    font-size: 3.2rem;
+    opacity: 0.35;
+    margin-bottom: 10px;
+}
+
+.notes-empty-state p {
+    margin: 0;
 }

@@ -11,10 +11,10 @@ const TopNav = ({ activeTab, setActiveTab, theme, setTheme }) => {
             <nav className="topbar-nav" aria-label="Primary">
                 <button
                     type="button"
-                    className={`topbar-tab ${activeTab === 'active' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('active')}
+                    className={`topbar-tab ${activeTab === 'kanban' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('kanban')}
                 >
-                    Currently Doing
+                    Kanban
                 </button>
                 <button
                     type="button"
@@ -22,6 +22,13 @@ const TopNav = ({ activeTab, setActiveTab, theme, setTheme }) => {
                     onClick={() => setActiveTab('backlog')}
                 >
                     Backlog
+                </button>
+                <button
+                    type="button"
+                    className={`topbar-tab ${activeTab === 'notes' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('notes')}
+                >
+                    Notes
                 </button>
                 <button
                     type="button"
