@@ -1,6 +1,7 @@
 /* Main Design System */
 :root {
     --border-radius: 12px;
+    color-scheme: dark;
 }
 
 :root:not([data-theme]),
@@ -159,6 +160,7 @@
 }
 
 :root[data-theme="light"] {
+    color-scheme: light;
     --bg-color: #f6f7fb;
     --sidebar-bg: #ffffff;
     --text-color: #1e1e2e;
@@ -575,6 +577,12 @@ select {
     border-radius: 8px;
     color: var(--text-color);
     font-family: inherit;
+}
+
+select option,
+select optgroup {
+    background: var(--sidebar-bg);
+    color: var(--text-color);
 }
 
 textarea,
