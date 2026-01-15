@@ -2,6 +2,15 @@ const { app, BrowserWindow } = require('electron');
 const path = require('path');
 const { fork } = require('child_process');
 
+// Ensure Windows uses the correct AppUserModelID (helps taskbar icon + grouping).
+if (process.platform === 'win32') {
+    try {
+        app.setAppUserModelId('com.workbee.app');
+    } catch {
+        // ignore
+    }
+}
+
 // Environment Setup
 const isDev = !app.isPackaged;
 const PORT = 9339; // API Port
@@ -11,11 +20,12 @@ let mainWindow;
 let serverProcess;
 
 function createWindow() {
+    const windowIcon = path.join(__dirname, '..', process.platform === 'win32' ? 'favicon.ico' : 'logo.png');
     mainWindow = new BrowserWindow({
         width: 1280,
         height: 800,
         title: "WorkerBee",
-        icon: path.join(__dirname, '../logo.png'),
+        icon: windowIcon,
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,

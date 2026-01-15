@@ -68,6 +68,61 @@ function runElectronBuilder(builderArgs) {
   });
 }
 
+function readBuildConfig() {
+  try {
+    const pkgPath = path.join(process.cwd(), 'package.json');
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+    const build = pkg.build || {};
+    const productName = build.productName || pkg.productName || pkg.name || 'app';
+    const outputDir = build.directories?.output || 'dist';
+    const icon = build.win?.icon || build.icon || 'favicon.ico';
+    return { productName, outputDir, icon };
+  } catch {
+    return { productName: 'app', outputDir: 'dist', icon: 'favicon.ico' };
+  }
+}
+
+function findWinUnpackedExe({ productName, outputDir }) {
+  const base = path.join(process.cwd(), outputDir, 'win-unpacked');
+  const expected = path.join(base, `${productName}.exe`);
+  if (fs.existsSync(expected)) return expected;
+  if (!fs.existsSync(base)) return null;
+  const exe = fs
+    .readdirSync(base)
+    .filter((f) => f.toLowerCase().endsWith('.exe'))
+    .map((f) => path.join(base, f))[0];
+  return exe || null;
+}
+
+async function trySetWindowsExeIcon() {
+  if (process.platform !== 'win32') return;
+  const { productName, outputDir, icon } = readBuildConfig();
+  const exePath = findWinUnpackedExe({ productName, outputDir });
+  if (!exePath) {
+    console.warn(`[workbee] Could not find Windows executable to set icon in ${path.join(outputDir, 'win-unpacked')}`);
+    return;
+  }
+
+  const iconPath = path.isAbsolute(icon) ? icon : path.join(process.cwd(), icon);
+  if (!fs.existsSync(iconPath)) {
+    console.warn(`[workbee] Icon file not found: ${iconPath}`);
+    return;
+  }
+
+  try {
+    const mod = await import('rcedit');
+    const rcedit = mod?.rcedit;
+    if (typeof rcedit !== 'function') {
+      console.warn('[workbee] rcedit is not available; skipping exe icon update');
+      return;
+    }
+    await rcedit(exePath, { icon: iconPath });
+    console.log(`[workbee] Updated Windows exe icon: ${path.relative(process.cwd(), exePath)}`);
+  } catch (err) {
+    console.warn(`[workbee] Failed to set Windows exe icon via rcedit: ${err?.message || err}`);
+  }
+}
+
 async function main() {
   const userArgs = process.argv.slice(2);
   const baseArgs = ['--win', '--x64', '--dir', ...userArgs];
@@ -79,6 +134,9 @@ async function main() {
 
   if (shouldForceNoRcedit) {
     const fallbackRun = await runElectronBuilder(fallbackArgs);
+    if (fallbackRun.code === 0) {
+      await trySetWindowsExeIcon();
+    }
     process.exit(fallbackRun.code);
     return;
   }
@@ -90,9 +148,13 @@ async function main() {
         '',
         '[workbee] Windows symlink creation is blocked; packaging will use win.signAndEditExecutable=false.',
         '[workbee] Fix (recommended): enable Windows Developer Mode, or run the terminal as Administrator, then retry.',
+        '[workbee] Note: a best-effort exe icon update will still run after packaging.',
       ].join('\n')
     );
     const fallbackRun = await runElectronBuilder(fallbackArgs);
+    if (fallbackRun.code === 0) {
+      await trySetWindowsExeIcon();
+    }
     process.exit(fallbackRun.code);
     return;
   }
@@ -101,6 +163,7 @@ async function main() {
 
   const firstRun = await runElectronBuilder(primaryArgs);
   if (firstRun.code === 0) {
+    await trySetWindowsExeIcon();
     process.exit(0);
     return;
   }
@@ -115,7 +178,7 @@ async function main() {
       '',
       '[workbee] electron-builder failed to extract winCodeSign because Windows symlink creation is blocked.',
       '[workbee] Fix (recommended): enable Windows Developer Mode, or run the terminal as Administrator, then retry.',
-      '[workbee] Fallback: rerun with win.signAndEditExecutable=false (disables exe icon/metadata + code signing).',
+      '[workbee] Fallback: rerun with win.signAndEditExecutable=false (disables built-in exe metadata + code signing).',
     ].join('\n')
   );
 
@@ -125,6 +188,9 @@ async function main() {
   }
 
   const fallbackRun = await runElectronBuilder(fallbackArgs);
+  if (fallbackRun.code === 0) {
+    await trySetWindowsExeIcon();
+  }
   process.exit(fallbackRun.code);
 }
 

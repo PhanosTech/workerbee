@@ -317,6 +317,7 @@
     overflow-y: auto;
     border: 1px solid var(--border-subtle);
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    box-sizing: border-box;
 }
 
 .modal-content.search-modal {
@@ -444,14 +445,15 @@
 }
 
 .modal-content.task-modal {
-    width: 96%;
-    max-width: 1320px;
-    height: 92vh;
-    max-height: 92vh;
+    width: 100%;
+    max-width: none;
+    height: 100%;
+    max-height: none;
     overflow: hidden;
     display: flex;
     flex-direction: column;
     background: linear-gradient(180deg, var(--panel-bg-3), transparent 180px), var(--card-bg);
+    border-radius: 0;
 }
 
 .modal-content.task-modal section label {
@@ -689,6 +691,12 @@ section label {
     font-size: 0.9rem;
     text-transform: uppercase;
     letter-spacing: 1px;
+}
+
+input,
+textarea,
+select {
+    box-sizing: border-box;
 }
 
 textarea,
@@ -1542,10 +1550,10 @@ textarea:focus-visible {
 
 .cat-item {
     box-sizing: border-box;
-    padding: 6px 8px;
+    padding: 2px 8px;
     cursor: pointer;
     border-radius: 6px;
-    margin-bottom: 2px;
+    margin-bottom: 0px;
     display: flex;
     align-items: center;
     gap: 8px;
@@ -2092,6 +2100,7 @@ textarea:focus-visible {
     background: transparent;
     border: none;
     padding: 0;
+    margin-right: 0;
     color: inherit;
     cursor: pointer;
 }
@@ -2145,6 +2154,13 @@ textarea:focus-visible {
     opacity: 0;
     transition: opacity 120ms ease, background 120ms ease;
     cursor: pointer;
+    margin-right: 0;
+}
+
+.notes-tree-action.default-active {
+    opacity: 1;
+    border-color: var(--accent-color);
+    color: var(--accent-color);
 }
 
 .notes-tree-category:hover .notes-tree-action {
@@ -2153,6 +2169,27 @@ textarea:focus-visible {
 
 .notes-tree-action:hover {
     background: var(--control-bg);
+}
+
+.notes-tree-create {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    margin: 4px 0 6px;
+    border-radius: 10px;
+    border: 1px solid var(--border-faint);
+    background: var(--panel-bg-2);
+}
+
+.notes-tree-create input {
+    flex: 1;
+    min-width: 0;
+    padding: 6px 8px;
+    border-radius: 8px;
+    border: 1px solid var(--border-subtle);
+    background: var(--control-bg);
+    color: var(--text-color);
 }
 
 .notes-tree-children {
