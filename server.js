@@ -175,6 +175,47 @@ app.put('/api/weekly_notes/:id', async (req, res) => {
     }
 });
 
+// Journal entries
+app.get('/api/journal', async (req, res) => {
+    try {
+        const rows = await db.getJournalEntries();
+        res.json(rows);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/api/journal/latest', async (req, res) => {
+    try {
+        const entry = await db.getLatestJournalEntry();
+        res.json(entry || null);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/api/journal/:date', async (req, res) => {
+    try {
+        const entry = await db.getJournalEntryByDate(req.params.date);
+        if (!entry) {
+            return res.status(404).json({ error: 'Journal entry not found' });
+        }
+        res.json(entry);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.put('/api/journal/:date', async (req, res) => {
+    try {
+        const { content } = req.body || {};
+        const result = await db.upsertJournalEntry(req.params.date, content ?? '');
+        res.json(result.entry);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // Search
 app.get('/api/search', async (req, res) => {
     try {
@@ -319,6 +360,19 @@ app.put('/api/todos/:id', async (req, res) => {
     try {
         const { text, completed } = req.body;
         const result = await db.updateTodo(req.params.id, text, completed);
+        res.json(result);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.put('/api/tasks/:id/todos/reorder', async (req, res) => {
+    try {
+        const { ordered_ids } = req.body || {};
+        if (!Array.isArray(ordered_ids)) {
+            return res.status(400).json({ error: 'ordered_ids is required' });
+        }
+        const result = await db.reorderTodosForTask(req.params.id, ordered_ids);
         res.json(result);
     } catch (err) {
         res.status(500).json({ error: err.message });

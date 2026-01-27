@@ -99,6 +99,14 @@ export const api = {
         });
         return res.json();
     },
+    reorderTodos: async (taskId, ordered_ids) => {
+        const res = await fetch(`${API_BASE}/tasks/${taskId}/todos/reorder`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ordered_ids })
+        });
+        return res.json();
+    },
     deleteTodo: async (id) => {
         return fetch(`${API_BASE}/todos/${id}`, { method: 'DELETE' });
     },
@@ -183,6 +191,29 @@ export const api = {
     },
     updateWeeklyNote: async (id, content) => {
         const res = await fetch(`${API_BASE}/weekly_notes/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content })
+        });
+        return res.json();
+    },
+
+    // Journal
+    getJournalEntries: async () => {
+        const res = await fetch(`${API_BASE}/journal`);
+        return res.json();
+    },
+    getLatestJournalEntry: async () => {
+        const res = await fetch(`${API_BASE}/journal/latest`);
+        return res.json();
+    },
+    getJournalEntry: async (date) => {
+        const res = await fetch(`${API_BASE}/journal/${encodeURIComponent(date)}`);
+        if (!res.ok) return null;
+        return res.json();
+    },
+    upsertJournalEntry: async (date, content) => {
+        const res = await fetch(`${API_BASE}/journal/${encodeURIComponent(date)}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ content })

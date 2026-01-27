@@ -32,6 +32,13 @@ const TopNav = ({ activeTab, setActiveTab, theme, setTheme }) => {
                 </button>
                 <button
                     type="button"
+                    className={`topbar-tab ${activeTab === 'journal' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('journal')}
+                >
+                    Journal
+                </button>
+                <button
+                    type="button"
                     className={`topbar-tab ${activeTab === 'reports' ? 'active' : ''}`}
                     onClick={() => setActiveTab('reports')}
                 >

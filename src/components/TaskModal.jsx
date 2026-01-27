@@ -4,6 +4,27 @@ import TiptapEditor from './TiptapEditor';
 
 const COPY_TASK_NOTE_FOLDER_KEY = 'wb-copy-task-note-folder-id';
 
+const moveBefore = (items, movingId, targetId) => {
+    const fromIndex = items.findIndex((t) => t.id === movingId);
+    const toIndex = items.findIndex((t) => t.id === targetId);
+    if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) return items;
+
+    const next = items.slice();
+    const [moved] = next.splice(fromIndex, 1);
+    const insertIndex = fromIndex < toIndex ? toIndex - 1 : toIndex;
+    next.splice(insertIndex, 0, moved);
+    return next;
+};
+
+const moveToEnd = (items, movingId) => {
+    const fromIndex = items.findIndex((t) => t.id === movingId);
+    if (fromIndex === -1 || fromIndex === items.length - 1) return items;
+    const next = items.slice();
+    const [moved] = next.splice(fromIndex, 1);
+    next.push(moved);
+    return next;
+};
+
 const TaskModal = ({ taskId, onClose, onUpdate }) => {
     const [task, setTask] = useState(null);
     const [todos, setTodos] = useState([]);
@@ -13,6 +34,9 @@ const TaskModal = ({ taskId, onClose, onUpdate }) => {
     const [categories, setCategories] = useState([]);
     const [newTodo, setNewTodo] = useState('');
     const [newLog, setNewLog] = useState('');
+    const [editingTodoId, setEditingTodoId] = useState(null);
+    const [editingTodoText, setEditingTodoText] = useState('');
+    const [dragTodoId, setDragTodoId] = useState(null);
     const [notesTab, setNotesTab] = useState('task');
     const [showNoteModal, setShowNoteModal] = useState(false);
     const [activeNote, setActiveNote] = useState(null);
@@ -168,8 +192,62 @@ const TaskModal = ({ taskId, onClose, onUpdate }) => {
     };
 
     const handleToggleTodo = async (todo) => {
-        await api.updateTodo(todo.id, todo.text, !todo.completed);
-        loadTaskData();
+        const nextCompleted = !todo.completed;
+        setTodos((prev) =>
+            prev.map((t) => (t.id === todo.id ? { ...t, completed: nextCompleted ? 1 : 0 } : t))
+        );
+        await api.updateTodo(todo.id, todo.text, nextCompleted);
+    };
+
+    const handleStartEditTodo = (todo) => {
+        setEditingTodoId(todo.id);
+        setEditingTodoText(todo.text || '');
+    };
+
+    const handleCancelEditTodo = () => {
+        setEditingTodoId(null);
+        setEditingTodoText('');
+    };
+
+    const handleSaveEditTodo = async (todo) => {
+        const nextText = editingTodoText.trim();
+        if (!nextText) return;
+        setTodos((prev) => prev.map((t) => (t.id === todo.id ? { ...t, text: nextText } : t)));
+        await api.updateTodo(todo.id, nextText, !!todo.completed);
+        handleCancelEditTodo();
+    };
+
+    const handleDeleteTodo = async (todo) => {
+        if (!confirm('Delete this todo?')) return;
+        setTodos((prev) => prev.filter((t) => t.id !== todo.id));
+        await api.deleteTodo(todo.id);
+        if (editingTodoId === todo.id) handleCancelEditTodo();
+    };
+
+    const parseDragTodoId = (e) => {
+        const raw = e.dataTransfer.getData('text/plain');
+        return Number(raw || dragTodoId);
+    };
+
+    const handleDropTodoOn = async (e, targetId) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const todoId = parseDragTodoId(e);
+        if (!todoId || todoId === targetId) return;
+        const next = moveBefore(todos, todoId, targetId);
+        setTodos(next);
+        setDragTodoId(null);
+        await api.reorderTodos(task.id, next.map((t) => t.id));
+    };
+
+    const handleDropTodoToEnd = async (e) => {
+        e.preventDefault();
+        const todoId = parseDragTodoId(e);
+        if (!todoId) return;
+        const next = moveToEnd(todos, todoId);
+        setTodos(next);
+        setDragTodoId(null);
+        await api.reorderTodos(task.id, next.map((t) => t.id));
     };
 
     const handleAddLog = async (e) => {
@@ -437,18 +515,102 @@ const TaskModal = ({ taskId, onClose, onUpdate }) => {
                                     onChange={(e) => setNewTodo(e.target.value)}
                                 />
                             </form>
-                            <div className="task-panel-scroll todo-scroll" role="region" aria-label="Todos">
+                            <div
+                                className="task-panel-scroll todo-scroll"
+                                role="region"
+                                aria-label="Todos"
+                                onDragOver={(e) => e.preventDefault()}
+                                onDrop={handleDropTodoToEnd}
+                            >
                                 <ul className="todo-list">
                                     {todos.map((todo) => (
-                                        <li key={todo.id}>
+                                        <li
+                                            key={todo.id}
+                                            className={`todo-row ${dragTodoId === todo.id ? 'dragging' : ''} ${editingTodoId === todo.id ? 'editing' : ''}`}
+                                            draggable={editingTodoId !== todo.id}
+                                            onDragStart={(e) => {
+                                                setDragTodoId(todo.id);
+                                                e.dataTransfer.setData('text/plain', String(todo.id));
+                                                e.dataTransfer.effectAllowed = 'move';
+                                            }}
+                                            onDragEnd={() => setDragTodoId(null)}
+                                            onDragOver={(e) => e.preventDefault()}
+                                            onDrop={(e) => handleDropTodoOn(e, todo.id)}
+                                        >
+                                            <span className="todo-drag-handle" aria-hidden="true">
+                                                ⋮⋮
+                                            </span>
                                             <label className="todo-item">
                                                 <input
                                                     type="checkbox"
                                                     checked={!!todo.completed}
                                                     onChange={() => handleToggleTodo(todo)}
                                                 />
-                                                <span>{todo.text}</span>
+                                                {editingTodoId === todo.id ? (
+                                                    <input
+                                                        className="todo-edit-input"
+                                                        value={editingTodoText}
+                                                        onChange={(e) => setEditingTodoText(e.target.value)}
+                                                        onKeyDown={(e) => {
+                                                            if (e.key === 'Enter') {
+                                                                e.preventDefault();
+                                                                handleSaveEditTodo(todo);
+                                                            }
+                                                            if (e.key === 'Escape') {
+                                                                e.preventDefault();
+                                                                handleCancelEditTodo();
+                                                            }
+                                                        }}
+                                                    />
+                                                ) : (
+                                                    <span onDoubleClick={() => handleStartEditTodo(todo)}>{todo.text}</span>
+                                                )}
                                             </label>
+                                            <div className="todo-actions">
+                                                {editingTodoId === todo.id ? (
+                                                    <>
+                                                        <button
+                                                            type="button"
+                                                            className="icon-btn"
+                                                            onClick={() => handleSaveEditTodo(todo)}
+                                                            title="Save"
+                                                            aria-label="Save todo"
+                                                        >
+                                                            ✓
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            className="icon-btn"
+                                                            onClick={handleCancelEditTodo}
+                                                            title="Cancel"
+                                                            aria-label="Cancel"
+                                                        >
+                                                            ×
+                                                        </button>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <button
+                                                            type="button"
+                                                            className="icon-btn"
+                                                            onClick={() => handleStartEditTodo(todo)}
+                                                            title="Edit"
+                                                            aria-label="Edit todo"
+                                                        >
+                                                            ✎
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            className="icon-btn"
+                                                            onClick={() => handleDeleteTodo(todo)}
+                                                            title="Delete"
+                                                            aria-label="Delete todo"
+                                                        >
+                                                            🗑
+                                                        </button>
+                                                    </>
+                                                )}
+                                            </div>
                                         </li>
                                     ))}
                                 </ul>

@@ -100,6 +100,7 @@ const createEmptyState = () => ({
             notes: 0,
             label_notes: 0,
             weekly_notes: 0,
+            journal_entries: 0,
         },
     },
     categories: [],
@@ -109,6 +110,7 @@ const createEmptyState = () => ({
     notes: [],
     label_notes: [],
     weekly_notes: [],
+    journal_entries: [],
 });
 
 let state = null;
@@ -150,7 +152,7 @@ const migrateInPlace = (st) => {
     for (const k of Object.keys(createEmptyState().meta.lastId)) {
         if (typeof st.meta.lastId[k] !== 'number') st.meta.lastId[k] = 0;
     }
-    for (const k of ['categories', 'tasks', 'todos', 'logs', 'notes', 'label_notes', 'weekly_notes']) {
+    for (const k of ['categories', 'tasks', 'todos', 'logs', 'notes', 'label_notes', 'weekly_notes', 'journal_entries']) {
         if (!Array.isArray(st[k])) st[k] = [];
     }
 
@@ -171,6 +173,21 @@ const migrateInPlace = (st) => {
         if (t.status === 'DONE' && !t.done_at) t.done_at = nowIso();
     });
 
+    const todoPositions = new Map();
+    st.todos.forEach((td) => {
+        const taskId = Number(td.task_id);
+        if (!Number.isFinite(taskId)) return;
+        const currentNext = Number(todoPositions.get(taskId) ?? 0);
+        const rawPos = Number(td.position);
+        if (Number.isFinite(rawPos)) {
+            td.position = rawPos;
+            todoPositions.set(taskId, Math.max(currentNext, rawPos + 1));
+            return;
+        }
+        td.position = currentNext;
+        todoPositions.set(taskId, currentNext + 1);
+    });
+
     st.label_notes.forEach((n) => {
         if (n.archived === undefined) n.archived = 0;
         if (n.archived && !n.archived_at) n.archived_at = nowIso();
@@ -186,6 +203,14 @@ const migrateInPlace = (st) => {
         if (n.content === undefined) n.content = '';
     });
 
+    st.journal_entries.forEach((n) => {
+        const normalizedDate = dateOnly(n.date || n.created_at || nowIso());
+        n.date = normalizedDate || dateOnly(nowIso());
+        if (!n.created_at) n.created_at = nowIso();
+        if (!n.updated_at) n.updated_at = n.created_at;
+        if (n.content === undefined) n.content = '';
+    });
+
     // Recompute lastId based on existing data
     const maxId = (arr) => arr.reduce((m, x) => Math.max(m, Number(x?.id || 0)), 0);
     st.meta.lastId.categories = Math.max(st.meta.lastId.categories, maxId(st.categories));
@@ -195,6 +220,7 @@ const migrateInPlace = (st) => {
     st.meta.lastId.notes = Math.max(st.meta.lastId.notes, maxId(st.notes));
     st.meta.lastId.label_notes = Math.max(st.meta.lastId.label_notes, maxId(st.label_notes));
     st.meta.lastId.weekly_notes = Math.max(st.meta.lastId.weekly_notes, maxId(st.weekly_notes));
+    st.meta.lastId.journal_entries = Math.max(st.meta.lastId.journal_entries, maxId(st.journal_entries));
 
     return st;
 };
@@ -605,13 +631,27 @@ module.exports = {
     getTaskTodos: async (taskId) => {
         const st = getState();
         const id = Number(taskId);
-        return st.todos.filter((td) => Number(td.task_id) === id);
+        return st.todos
+            .filter((td) => Number(td.task_id) === id)
+            .slice()
+            .sort((a, b) => {
+                const ap = Number(a?.position ?? 0);
+                const bp = Number(b?.position ?? 0);
+                if (ap !== bp) return ap - bp;
+                return Number(a?.id ?? 0) - Number(b?.id ?? 0);
+            });
     },
     addTodo: async (task_id, text) => {
         return withWriteLock(async () => {
             const st = getState();
             const id = bumpId('todos');
-            st.todos.push({ id, task_id: Number(task_id), text, completed: 0 });
+            const tid = Number(task_id);
+            const maxPos = st.todos.reduce((max, td) => {
+                if (Number(td.task_id) !== tid) return max;
+                const pos = Number(td.position ?? -1);
+                return Number.isFinite(pos) ? Math.max(max, pos) : max;
+            }, -1);
+            st.todos.push({ id, task_id: tid, text, completed: 0, position: maxPos + 1 });
             await persist();
             return { changes: 1, lastInsertRowid: id };
         });
@@ -625,6 +665,23 @@ module.exports = {
             todo.completed = completed ? 1 : 0;
             await persist();
             return { changes: 1 };
+        });
+    },
+    reorderTodosForTask: async (taskId, orderedIds) => {
+        return withWriteLock(async () => {
+            const st = getState();
+            const tid = Number(taskId);
+            if (!Number.isFinite(tid)) return { ok: false };
+            const ordered = Array.isArray(orderedIds) ? orderedIds : [];
+            ordered.forEach((rawId, idx) => {
+                const id = Number(rawId);
+                if (!Number.isFinite(id)) return;
+                const todo = st.todos.find((td) => Number(td.id) === id && Number(td.task_id) === tid);
+                if (!todo) return;
+                todo.position = idx;
+            });
+            await persist();
+            return { ok: true };
         });
     },
     deleteTodo: async (id) => {
@@ -820,6 +877,54 @@ module.exports = {
             note.updated_at = nowIso();
             await persist();
             return { changes: 1, note };
+        });
+    },
+
+    // Journal entries (daily snapshots)
+    getJournalEntries: async () => {
+        const st = getState();
+        return st.journal_entries
+            .slice()
+            .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+    },
+    getJournalEntryByDate: async (dateStr) => {
+        const st = getState();
+        const date = dateOnly(dateStr);
+        if (!date) return null;
+        return st.journal_entries.find((n) => String(n.date) === date) || null;
+    },
+    getLatestJournalEntry: async () => {
+        const st = getState();
+        if (!st.journal_entries.length) return null;
+        return st.journal_entries.reduce((latest, entry) => {
+            if (!latest) return entry;
+            return String(entry.date || '').localeCompare(String(latest.date || '')) > 0 ? entry : latest;
+        }, null);
+    },
+    upsertJournalEntry: async (dateStr, content) => {
+        return withWriteLock(async () => {
+            const st = getState();
+            const date = dateOnly(dateStr);
+            if (!date) throw new Error('Invalid date');
+            const existing = st.journal_entries.find((n) => String(n.date) === date);
+            if (existing) {
+                existing.content = content ?? '';
+                existing.updated_at = nowIso();
+                await persist();
+                return { changes: 1, entry: existing };
+            }
+            const id = bumpId('journal_entries');
+            const ts = nowIso();
+            const entry = {
+                id,
+                date,
+                content: content ?? '',
+                created_at: ts,
+                updated_at: ts,
+            };
+            st.journal_entries.push(entry);
+            await persist();
+            return { changes: 1, entry };
         });
     },
 

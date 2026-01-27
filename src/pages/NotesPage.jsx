@@ -8,6 +8,8 @@ const MODAL_SCHEME_PREFIX = 'workbee://note/';
 const EXPANDED_FOLDERS_STORAGE_KEY = 'wb-notes-expanded-folders-v1';
 const DEFAULT_FOLDER_STORAGE_KEY = 'wb-default-folder-id';
 const SHOW_SUBFOLDER_NOTES_STORAGE_KEY = 'wb-notes-show-subfolder-notes-v1';
+const SELECTED_NOTE_STORAGE_KEY = 'wb-notes-selected-note-id';
+const DEFAULT_FOLDER_COLOR = '#89b4fa';
 
 const sortByPositionThenName = (a, b) => {
     const ap = Number(a?.position ?? 0);
@@ -79,11 +81,26 @@ function NotesPage({ focus, onOpenSearch }) {
     const [archiveWeeks, setArchiveWeeks] = useState('4');
     const [archiveResults, setArchiveResults] = useState(null); // { startDate, endDate, tasks, notes }
     const [archiveLoading, setArchiveLoading] = useState(false);
+    const [activeCategoryId, setActiveCategoryId] = useState(null);
+    const [folderMenuId, setFolderMenuId] = useState(null);
+    const [folderDraft, setFolderDraft] = useState({
+        id: null,
+        parent_id: null,
+        position: 0,
+        name: '',
+        color: DEFAULT_FOLDER_COLOR,
+    });
+    const [noteDirty, setNoteDirty] = useState(false);
 
     const createNoteInputRef = useRef(null);
     const didApplyDefaultFolderRef = useRef(false);
     const didApplyStoredSubfolderExpandRef = useRef(false);
     const notesFetchSeqRef = useRef(new Map());
+    const folderMenuRef = useRef(null);
+    const autoSaveTimerRef = useRef(null);
+    const selectedNoteRef = useRef(null);
+    const noteDirtyRef = useRef(false);
+    const isMountedRef = useRef(true);
 
     const categoryById = useMemo(() => {
         const map = new Map();
@@ -196,6 +213,25 @@ function NotesPage({ focus, onOpenSearch }) {
     }, [createNoteForCategoryId]);
 
     useEffect(() => {
+        selectedNoteRef.current = selectedNote;
+    }, [selectedNote]);
+
+    useEffect(() => {
+        noteDirtyRef.current = noteDirty;
+    }, [noteDirty]);
+
+    useEffect(() => {
+        if (!selectedNote) setNoteDirty(false);
+    }, [selectedNote]);
+
+    useEffect(() => {
+        return () => {
+            isMountedRef.current = false;
+            flushAutoSave(selectedNoteRef.current);
+        };
+    }, []);
+
+    useEffect(() => {
         try {
             window.localStorage.setItem(SHOW_SUBFOLDER_NOTES_STORAGE_KEY, JSON.stringify(showSubfolderNotes));
         } catch {
@@ -214,6 +250,28 @@ function NotesPage({ focus, onOpenSearch }) {
             // ignore
         }
     }, [defaultCategoryId]);
+
+    useEffect(() => {
+        try {
+            if (selectedNote?.id) {
+                window.localStorage.setItem(SELECTED_NOTE_STORAGE_KEY, String(selectedNote.id));
+            } else {
+                window.localStorage.removeItem(SELECTED_NOTE_STORAGE_KEY);
+            }
+        } catch {
+            // ignore
+        }
+    }, [selectedNote?.id]);
+
+    useEffect(() => {
+        if (!folderMenuId) return;
+        const handleClick = (event) => {
+            if (folderMenuRef.current?.contains(event.target)) return;
+            closeFolderMenu();
+        };
+        window.addEventListener('mousedown', handleClick);
+        return () => window.removeEventListener('mousedown', handleClick);
+    }, [folderMenuId]);
 
     useEffect(() => {
         if (!defaultCategoryId) return;
@@ -265,19 +323,20 @@ function NotesPage({ focus, onOpenSearch }) {
         }
     }, [expandedCategories]);
 
+    const fetchCategories = async () => {
+        try {
+            const res = await fetch(`${API_BASE}/categories`);
+            if (!res.ok) throw new Error('Failed to fetch categories');
+            const data = await res.json();
+            setCategories(data);
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
     useEffect(() => {
-        const fetchCategories = async () => {
-            try {
-                const res = await fetch(`${API_BASE}/categories`);
-                if (!res.ok) throw new Error('Failed to fetch categories');
-                const data = await res.json();
-                setCategories(data);
-            } catch (err) {
-                console.error(err);
-            } finally {
-                setIsLoading(false);
-            }
-        };
         fetchCategories();
     }, []);
 
@@ -312,6 +371,7 @@ function NotesPage({ focus, onOpenSearch }) {
     };
 
     const toggleCategory = (categoryId) => {
+        setActiveCategoryId(categoryId);
         const isOpen = expandedCategories.has(categoryId);
         if (isOpen) {
             closeCategory(categoryId, { includeDescendants: showSubfolderNotes });
@@ -334,8 +394,97 @@ function NotesPage({ focus, onOpenSearch }) {
         });
     };
 
+    const openFolderMenu = (category) => {
+        if (!category?.id) return;
+        setActiveCategoryId(category.id);
+        setFolderMenuId(category.id);
+        setFolderDraft({
+            id: category.id,
+            parent_id: category.parent_id ?? null,
+            position: Number(category.position ?? 0),
+            name: category.name || '',
+            color: category.color || DEFAULT_FOLDER_COLOR,
+        });
+    };
+
+    const closeFolderMenu = () => {
+        setFolderMenuId(null);
+        setFolderDraft({
+            id: null,
+            parent_id: null,
+            position: 0,
+            name: '',
+            color: DEFAULT_FOLDER_COLOR,
+        });
+    };
+
+    const handleSaveFolder = async () => {
+        if (!folderDraft.id) return;
+        const name = folderDraft.name.trim();
+        if (!name) return;
+        try {
+            const res = await fetch(`${API_BASE}/categories/${folderDraft.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    parent_id: folderDraft.parent_id,
+                    name,
+                    color: folderDraft.color,
+                    position: folderDraft.position,
+                }),
+            });
+            if (!res.ok) throw new Error('Failed to update folder');
+            await fetchCategories();
+            closeFolderMenu();
+        } catch (err) {
+            console.error(err);
+            window.alert('Failed to update folder');
+        }
+    };
+
+    const handleDeleteFolder = async () => {
+        if (!folderDraft.id) return;
+        if (!window.confirm('Delete this folder and its notes?')) return;
+        try {
+            const res = await fetch(`${API_BASE}/categories/${folderDraft.id}`, { method: 'DELETE' });
+            if (!res.ok) throw new Error('Failed to delete folder');
+            if (defaultCategoryId === folderDraft.id) setDefaultCategoryId(null);
+            if (selectedNote?.category_id === folderDraft.id) setSelectedNote(null);
+            setNotesMap((prev) => {
+                const next = { ...prev };
+                delete next[folderDraft.id];
+                return next;
+            });
+            closeFolderMenu();
+            await fetchCategories();
+        } catch (err) {
+            console.error(err);
+            window.alert('Failed to delete folder');
+        }
+    };
+
+    const handleToggleDefaultFolder = (categoryId) => {
+        if (!categoryId) return;
+        setDefaultCategoryId((prev) => (prev === categoryId ? null : categoryId));
+    };
+
+    const flushAutoSave = (note) => {
+        if (!noteDirtyRef.current) return;
+        if (!note?.id) return;
+        if (autoSaveTimerRef.current) {
+            window.clearTimeout(autoSaveTimerRef.current);
+            autoSaveTimerRef.current = null;
+        }
+        handleSaveNote(note);
+    };
+
     const handleSelectNote = (note) => {
+        flushAutoSave(selectedNoteRef.current);
         setSelectedNote(note);
+        setNoteDirty(false);
+        if (note?.category_id) {
+            setActiveCategoryId(note.category_id);
+        }
         if (note?.category_id) {
             expandAncestors(note.category_id);
             if (showSubfolderNotes) openCategory(note.category_id, { includeDescendants: true });
@@ -354,7 +503,14 @@ function NotesPage({ focus, onOpenSearch }) {
 
         (async () => {
             const row = await fetchNoteById(noteId);
-            if (!row) return;
+            if (!row) {
+                try {
+                    window.localStorage.removeItem(SELECTED_NOTE_STORAGE_KEY);
+                } catch {
+                    // ignore
+                }
+                return;
+            }
             if (row.category_id) {
                 expandAncestors(row.category_id);
                 if (!notesMap[row.category_id]) {
@@ -365,6 +521,38 @@ function NotesPage({ focus, onOpenSearch }) {
         })();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [focus?.nonce]);
+
+    useEffect(() => {
+        if (focus?.noteId) return;
+        if (selectedNote) return;
+        if (!categories.length) return;
+        const hash = String(window.location.hash || '');
+        const match = hash.match(/#\/notes\/(\d+)/);
+        const fromHash = match ? Number(match[1]) : null;
+        let storedId = null;
+        try {
+            const raw = window.localStorage.getItem(SELECTED_NOTE_STORAGE_KEY);
+            const parsed = raw ? Number(raw) : null;
+            storedId = Number.isFinite(parsed) ? parsed : null;
+        } catch {
+            storedId = null;
+        }
+        const noteId = fromHash || storedId;
+        if (!noteId) return;
+
+        (async () => {
+            const row = await fetchNoteById(noteId);
+            if (!row) return;
+            if (row.category_id) {
+                expandAncestors(row.category_id);
+                if (!notesMap[row.category_id]) {
+                    await fetchNotesForCategory(row.category_id);
+                }
+            }
+            handleSelectNote(row);
+        })();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [focus?.noteId, categories.length, selectedNote, notesMap]);
 
     const createNote = async (categoryId, title) => {
         const trimmedTitle = String(title || '').trim();
@@ -408,6 +596,7 @@ function NotesPage({ focus, onOpenSearch }) {
             setCreateNoteTitle('');
             return;
         }
+        setActiveCategoryId(categoryId);
         setCreateNoteTitle('');
         setCreateNoteForCategoryId(categoryId);
         openCategory(categoryId, { includeDescendants: showSubfolderNotes });
@@ -428,29 +617,50 @@ function NotesPage({ focus, onOpenSearch }) {
         if (ok) cancelCreateNote();
     };
 
-    const handleSaveNote = async () => {
-        if (!selectedNote) return;
+    const handleSaveNote = async (note = selectedNote) => {
+        if (!note) return;
         try {
-            await fetch(`${API_BASE}/label_notes/${selectedNote.id}`, {
+            await fetch(`${API_BASE}/label_notes/${note.id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    title: selectedNote.title,
-                    content: selectedNote.content,
+                    title: note.title,
+                    content: note.content,
                 }),
             });
 
-            setNotesMap((prev) => {
-                const list = prev[selectedNote.category_id] || [];
-                return {
-                    ...prev,
-                    [selectedNote.category_id]: list.map((n) => (n.id === selectedNote.id ? selectedNote : n)),
-                };
-            });
+            if (isMountedRef.current) {
+                setNotesMap((prev) => {
+                    const list = prev[note.category_id] || [];
+                    return {
+                        ...prev,
+                        [note.category_id]: list.map((n) => (n.id === note.id ? note : n)),
+                    };
+                });
+            }
+            if (isMountedRef.current && selectedNote?.id === note.id) {
+                setNoteDirty(false);
+            }
         } catch (err) {
             console.error(err);
         }
     };
+
+    useEffect(() => {
+        if (!noteDirty || !selectedNote?.id) return;
+        if (autoSaveTimerRef.current) {
+            window.clearTimeout(autoSaveTimerRef.current);
+        }
+        autoSaveTimerRef.current = window.setTimeout(() => {
+            handleSaveNote(selectedNote);
+        }, 900);
+        return () => {
+            if (autoSaveTimerRef.current) {
+                window.clearTimeout(autoSaveTimerRef.current);
+                autoSaveTimerRef.current = null;
+            }
+        };
+    }, [noteDirty, selectedNote?.id, selectedNote?.title, selectedNote?.content]);
 
     useEffect(() => {
         if (didApplyStoredSubfolderExpandRef.current) return;
@@ -556,7 +766,10 @@ function NotesPage({ focus, onOpenSearch }) {
                 ...prev,
                 [categoryId]: (prev[categoryId] || []).filter((n) => n.id !== noteId),
             }));
-            if (selectedNote?.id === noteId) setSelectedNote(null);
+            if (selectedNote?.id === noteId) {
+                setSelectedNote(null);
+                setNoteDirty(false);
+            }
         } catch (err) {
             console.error(err);
         }
@@ -595,10 +808,15 @@ function NotesPage({ focus, onOpenSearch }) {
         return nodes.map((cat) => {
             const isOpen = expandedCategories.has(cat.id);
             const notes = notesMap[cat.id] || [];
+            const isActive = activeCategoryId === cat.id;
+            const isMenuOpen = folderMenuId === cat.id;
 
             return (
                 <div key={cat.id}>
-                    <div className="notes-tree-row notes-tree-category" style={{ paddingLeft: depth * 16 }}>
+                    <div
+                        className={`notes-tree-row notes-tree-category ${isActive ? 'active' : ''}`}
+                        style={{ paddingLeft: depth * 16 }}
+                    >
                         <button
                             type="button"
                             className="notes-tree-main"
@@ -620,24 +838,87 @@ function NotesPage({ focus, onOpenSearch }) {
                         </button>
                         <button
                             type="button"
-                            className={`notes-tree-action ${defaultCategoryId === cat.id ? 'default-active' : ''}`}
-                            onClick={() => setDefaultCategoryId((prev) => (prev === cat.id ? null : cat.id))}
-                            title={
-                                defaultCategoryId === cat.id ? 'Default folder (click to clear)' : 'Set as default folder'
-                            }
-                            aria-label={defaultCategoryId === cat.id ? 'Default folder' : 'Set as default folder'}
+                            className={`notes-tree-action ${isActive || isMenuOpen ? 'visible' : ''}`}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                if (isMenuOpen) {
+                                    closeFolderMenu();
+                                } else {
+                                    openFolderMenu(cat);
+                                }
+                            }}
+                            title="Folder settings"
+                            aria-label="Folder settings"
                         >
-                            {defaultCategoryId === cat.id ? '★' : '☆'}
+                            ⋯
                         </button>
                         <button
                             type="button"
                             className="notes-tree-action"
-                            onClick={() => startCreateNote(cat.id)}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                startCreateNote(cat.id);
+                            }}
                             title={createNoteForCategoryId === cat.id ? 'Cancel new note' : 'New note'}
                             aria-label={createNoteForCategoryId === cat.id ? 'Cancel new note' : 'New note'}
                         >
                             +
                         </button>
+                        {isMenuOpen ? (
+                            <div
+                                ref={folderMenuRef}
+                                className="notes-folder-menu"
+                                role="menu"
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                                <div className="notes-folder-menu-title">Folder settings</div>
+                                <label className="notes-folder-menu-label" htmlFor={`folder-name-${cat.id}`}>
+                                    Name
+                                </label>
+                                <input
+                                    id={`folder-name-${cat.id}`}
+                                    type="text"
+                                    value={folderDraft.name}
+                                    onChange={(e) => setFolderDraft({ ...folderDraft, name: e.target.value })}
+                                />
+                                <label className="notes-folder-menu-label" htmlFor={`folder-color-${cat.id}`}>
+                                    Color
+                                </label>
+                                <div className="notes-folder-menu-row">
+                                    <input
+                                        id={`folder-color-${cat.id}`}
+                                        type="color"
+                                        value={folderDraft.color || DEFAULT_FOLDER_COLOR}
+                                        onChange={(e) => setFolderDraft({ ...folderDraft, color: e.target.value })}
+                                    />
+                                    <button
+                                        type="button"
+                                        className="link-btn"
+                                        onClick={() => handleToggleDefaultFolder(cat.id)}
+                                    >
+                                        {defaultCategoryId === cat.id ? '★ Default' : '☆ Set default'}
+                                    </button>
+                                </div>
+                                <div className="notes-folder-menu-actions">
+                                    <button type="button" className="danger" onClick={handleDeleteFolder}>
+                                        Delete
+                                    </button>
+                                </div>
+                                <div className="notes-folder-menu-actions">
+                                    <button type="button" onClick={closeFolderMenu}>
+                                        Close
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="primary-btn"
+                                        onClick={handleSaveFolder}
+                                        disabled={!folderDraft.name.trim()}
+                                    >
+                                        Save
+                                    </button>
+                                </div>
+                            </div>
+                        ) : null}
                     </div>
 
                     {isOpen && (
@@ -756,7 +1037,7 @@ function NotesPage({ focus, onOpenSearch }) {
                             Include sub-folders
                         </label>
                         <div className="muted" style={{ fontSize: '0.8rem' }}>
-                            ☆ sets default folder
+                            Folder settings → Set default
                         </div>
                     </div>
                 </div>
@@ -772,8 +1053,11 @@ function NotesPage({ focus, onOpenSearch }) {
                             <input
                                 className="note-title-input"
                                 value={selectedNote.title}
-                                onChange={(e) => setSelectedNote({ ...selectedNote, title: e.target.value })}
-                                onBlur={handleSaveNote}
+                                onChange={(e) => {
+                                    setSelectedNote({ ...selectedNote, title: e.target.value });
+                                    setNoteDirty(true);
+                                }}
+                                onBlur={() => handleSaveNote()}
                             />
                             <div className="note-header-actions">
                                 <button
@@ -818,7 +1102,10 @@ function NotesPage({ focus, onOpenSearch }) {
                         <div className="note-editor-wrapper" onClickCapture={handleEditorClickCapture}>
                             <TiptapEditor
                                 content={selectedNote.content}
-                                onChange={(html) => setSelectedNote((prev) => ({ ...prev, content: html }))}
+                                onChange={(html) => {
+                                    setSelectedNote((prev) => ({ ...prev, content: html }));
+                                    setNoteDirty(true);
+                                }}
                                 onRequestSave={handleSaveNote}
                                 placeholder="Start writing your note… (paste screenshots directly)"
                             />

@@ -5,6 +5,7 @@ import ReportsPage from './pages/ReportsPage';
 import BacklogPage from './pages/BacklogPage';
 import NotesPage from './pages/NotesPage';
 import WeeklyStatusPage from './pages/WeeklyStatusPage';
+import JournalPage from './pages/JournalPage';
 import SearchModal from './components/SearchModal';
 import './styles/main.css';
 
@@ -86,6 +87,7 @@ function App() {
                 {activeTab === 'notes' && <NotesPage focus={notesFocus} onOpenSearch={openSearch} />}
                 {activeTab === 'backlog' && <BacklogPage focus={backlogFocus} onOpenSearch={openSearch} />}
                 {activeTab === 'reports' && <ReportsPage />}
+                {activeTab === 'journal' && <JournalPage />}
             </main>
 
             <SearchModal open={searchOpen} onClose={() => setSearchOpen(false)} onSelect={handleSearchSelect} />
