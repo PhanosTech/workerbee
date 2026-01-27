@@ -813,17 +813,17 @@ textarea:focus-visible {
 
 .todo-list li {
     display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 10px;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 6px 8px;
     border-radius: 8px;
     background: var(--panel-bg-2);
 }
 
 .todo-row {
     display: flex;
-    align-items: center;
-    gap: 10px;
+    align-items: flex-start;
+    gap: 8px;
 }
 
 .todo-row.dragging {
@@ -833,8 +833,10 @@ textarea:focus-visible {
 .todo-drag-handle {
     cursor: grab;
     opacity: 0.6;
-    font-size: 1rem;
+    font-size: 0.95rem;
+    line-height: 1.2;
     user-select: none;
+    margin-top: 2px;
 }
 
 .todo-row.editing .todo-drag-handle {
@@ -844,8 +846,8 @@ textarea:focus-visible {
 
 .todo-item {
     display: flex;
-    align-items: center;
-    gap: 10px;
+    align-items: flex-start;
+    gap: 8px;
     flex: 1;
     min-width: 0;
     cursor: pointer;
@@ -863,12 +865,17 @@ textarea:focus-visible {
     min-width: 0;
     overflow-wrap: anywhere;
     word-break: break-word;
+    line-height: 1.25;
+}
+
+.todo-item input[type="checkbox"] {
+    margin-top: 2px;
 }
 
 .todo-edit-input {
     flex: 1;
     min-width: 0;
-    padding: 6px 8px;
+    padding: 4px 6px;
     border-radius: 8px;
     border: 1px solid var(--border-subtle);
     background: var(--input-bg);
@@ -879,8 +886,13 @@ textarea:focus-visible {
 .todo-actions {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 2px;
     flex-shrink: 0;
+}
+
+.todo-actions .icon-btn {
+    padding: 2px 4px;
+    font-size: 0.95rem;
 }
 
 .todo-item input[type="checkbox"]:checked+span {
@@ -1874,23 +1886,28 @@ textarea:focus-visible {
     outline: none;
 }
 
-.tiptap-content .ProseMirror {
+.tiptap-content .ProseMirror,
+.tiptap-content.ProseMirror {
     outline: none;
 }
 
-.tiptap-content .ProseMirror > *:first-child {
+.tiptap-content .ProseMirror > *:first-child,
+.tiptap-content.ProseMirror > *:first-child {
     margin-top: 0;
 }
 
-.tiptap-content .ProseMirror p {
+.tiptap-content .ProseMirror p,
+.tiptap-content.ProseMirror p {
     margin: 0 0 0.65em;
 }
 
-.tiptap-content .ProseMirror p:last-child {
+.tiptap-content .ProseMirror p:last-child,
+.tiptap-content.ProseMirror p:last-child {
     margin-bottom: 0;
 }
 
-.tiptap-content .ProseMirror img {
+.tiptap-content .ProseMirror img,
+.tiptap-content.ProseMirror img {
     display: block;
     max-width: 100%;
     height: auto;
@@ -1898,12 +1915,14 @@ textarea:focus-visible {
     border: 1px solid var(--border-faint);
 }
 
-.tiptap-content .ProseMirror .ProseMirror-selectednode {
+.tiptap-content .ProseMirror .ProseMirror-selectednode,
+.tiptap-content.ProseMirror .ProseMirror-selectednode {
     outline: 2px solid var(--accent-color);
     border-radius: 10px;
 }
 
-.tiptap-content .ProseMirror p.is-editor-empty:first-child::before {
+.tiptap-content .ProseMirror p.is-editor-empty:first-child::before,
+.tiptap-content.ProseMirror p.is-editor-empty:first-child::before {
     content: attr(data-placeholder);
     float: left;
     color: var(--text-faint);
@@ -1914,6 +1933,65 @@ textarea:focus-visible {
 .tiptap-content ul {
     padding-left: 20px;
     list-style: disc;
+}
+
+.tiptap-content .ProseMirror ul[data-type="taskList"],
+.tiptap-content.ProseMirror ul[data-type="taskList"] {
+    list-style: none;
+    padding-left: 0;
+    margin: 0 0 0.65em;
+}
+
+.tiptap-content .ProseMirror ul[data-type="taskList"] > li,
+.tiptap-content.ProseMirror ul[data-type="taskList"] > li {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    gap: 0.55rem;
+    align-items: flex-start;
+    margin: 0.4rem 0;
+}
+
+.tiptap-content .ProseMirror ul[data-type="taskList"] > li > label,
+.tiptap-content.ProseMirror ul[data-type="taskList"] > li > label {
+    margin-top: 0.15rem;
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    text-transform: none;
+    letter-spacing: normal;
+    color: inherit;
+}
+
+.tiptap-content .ProseMirror ul[data-type="taskList"] > li input[type="checkbox"],
+.tiptap-content.ProseMirror ul[data-type="taskList"] > li input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--accent-color);
+}
+
+.tiptap-content .ProseMirror ul[data-type="taskList"] > li > div,
+.tiptap-content.ProseMirror ul[data-type="taskList"] > li > div {
+    flex: 1;
+    min-width: 0;
+}
+
+.tiptap-content .ProseMirror ul[data-type="taskList"] > li > div p,
+.tiptap-content.ProseMirror ul[data-type="taskList"] > li > div p {
+    margin: 0;
+}
+
+.tiptap-content .ProseMirror ul[data-type="taskList"] > li[data-checked="true"] > div,
+.tiptap-content.ProseMirror ul[data-type="taskList"] > li[data-checked="true"] > div {
+    color: var(--text-muted);
+    text-decoration: line-through;
+    text-decoration-color: var(--text-faint);
+    text-decoration-thickness: 2px;
+}
+
+.tiptap-content .ProseMirror ul[data-type="taskList"] > li[data-checked="true"] input[type="checkbox"],
+.tiptap-content.ProseMirror ul[data-type="taskList"] > li[data-checked="true"] input[type="checkbox"] {
+    accent-color: var(--text-faint);
 }
 
 .tiptap-content a {
@@ -2224,9 +2302,9 @@ textarea:focus-visible {
     position: absolute;
     top: calc(100% + 6px);
     right: 8px;
-    z-index: 20;
+    z-index: 60;
     min-width: 220px;
-    background: var(--panel-bg);
+    background: var(--card-bg);
     border: 1px solid var(--border-subtle);
     border-radius: 12px;
     padding: 10px;

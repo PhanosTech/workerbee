@@ -28,12 +28,30 @@ const JournalPage = () => {
     const [dirty, setDirty] = useState(false);
     const [loading, setLoading] = useState(true);
     const [saveState, setSaveState] = useState('idle');
+    const [error, setError] = useState(null);
     const autoSaveRef = useRef(null);
     const isMountedRef = useRef(true);
     const selectedDateRef = useRef('');
     const contentRef = useRef('');
 
     const getToday = () => new Date().toISOString().split('T')[0];
+    const fallbackDate = () => dateOnly(getToday());
+
+    const withTimeout = (promise, ms = 6000) =>
+        new Promise((resolve, reject) => {
+            const setTimer = typeof window !== 'undefined' ? window.setTimeout : setTimeout;
+            const clearTimer = typeof window !== 'undefined' ? window.clearTimeout : clearTimeout;
+            const timer = setTimer(() => reject(new Error('Request timeout')), ms);
+            promise
+                .then((value) => {
+                    clearTimer(timer);
+                    resolve(value);
+                })
+                .catch((err) => {
+                    clearTimer(timer);
+                    reject(err);
+                });
+        });
 
     useEffect(() => {
         selectedDateRef.current = selectedDate;
@@ -48,7 +66,8 @@ const JournalPage = () => {
         if (!normalized) return;
         try {
             setLoading(true);
-            const entry = await api.getJournalEntry(normalized);
+            setError(null);
+            const entry = await withTimeout(api.getJournalEntry(normalized));
             if (!entry) {
                 setLoading(false);
                 return;
@@ -60,6 +79,7 @@ const JournalPage = () => {
             setSaveState('idle');
         } catch (err) {
             console.error(err);
+            if (isMountedRef.current) setError('Failed to load logs');
         } finally {
             if (isMountedRef.current) setLoading(false);
         }
@@ -77,7 +97,7 @@ const JournalPage = () => {
         }
 
         const baseContent = currentEntries[0]?.content || '';
-        const created = await api.upsertJournalEntry(normalizedToday, baseContent);
+        const created = await withTimeout(api.upsertJournalEntry(normalizedToday, baseContent));
         const next = mergeEntry(currentEntries, created);
         if (!isMountedRef.current) return next;
         setSelectedDate(created.date);
@@ -90,17 +110,29 @@ const JournalPage = () => {
     const loadEntries = async () => {
         setLoading(true);
         try {
-            const data = await api.getJournalEntries();
+            setError(null);
+            const data = await withTimeout(api.getJournalEntries());
             const list = Array.isArray(data) ? data.slice().sort(sortByDateDesc) : [];
             let next = list;
             if (!list.length) {
-                const created = await api.upsertJournalEntry(getToday(), '');
-                next = [created];
-                if (isMountedRef.current) {
-                    setSelectedDate(created.date);
-                    setContent(created.content || '');
-                    setDirty(false);
-                    setSaveState('idle');
+                const created = await withTimeout(api.upsertJournalEntry(getToday(), ''));
+                if (created?.date) {
+                    next = [created];
+                    if (isMountedRef.current) {
+                        setSelectedDate(created.date);
+                        setContent(created.content || '');
+                        setDirty(false);
+                        setSaveState('idle');
+                    }
+                } else {
+                    const fallback = fallbackDate();
+                    next = [{ date: fallback, content: '' }];
+                    if (isMountedRef.current) {
+                        setSelectedDate(fallback);
+                        setContent('');
+                        setDirty(false);
+                        setSaveState('idle');
+                    }
                 }
             } else {
                 next = await ensureTodayEntry(list);
@@ -108,6 +140,15 @@ const JournalPage = () => {
             if (isMountedRef.current) setEntries(next);
         } catch (err) {
             console.error(err);
+            if (isMountedRef.current) {
+                const fallback = fallbackDate();
+                setEntries([{ date: fallback, content: '' }]);
+                setSelectedDate(fallback);
+                setContent('');
+                setDirty(false);
+                setSaveState('idle');
+                setError('Failed to load logs');
+            }
         } finally {
             if (isMountedRef.current) setLoading(false);
         }
@@ -118,7 +159,7 @@ const JournalPage = () => {
         if (!targetDate) return;
         try {
             if (isMountedRef.current && !silent) setSaveState('saving');
-            const saved = await api.upsertJournalEntry(targetDate, nextContent);
+            const saved = await withTimeout(api.upsertJournalEntry(targetDate, nextContent));
             if (!isMountedRef.current || silent) return;
             setEntries((prev) => mergeEntry(prev, saved));
             setDirty(false);
@@ -139,6 +180,7 @@ const JournalPage = () => {
     };
 
     useEffect(() => {
+        isMountedRef.current = true;
         loadEntries();
         return () => {
             flushSave();
@@ -184,7 +226,8 @@ const JournalPage = () => {
         }
         try {
             const baseContent = entries[0]?.content || '';
-            const created = await api.upsertJournalEntry(normalizedToday, baseContent);
+            setError(null);
+            const created = await withTimeout(api.upsertJournalEntry(normalizedToday, baseContent));
             if (!isMountedRef.current) return;
             setEntries((prev) => mergeEntry(prev, created));
             setSelectedDate(created.date);
@@ -193,6 +236,7 @@ const JournalPage = () => {
             setSaveState('idle');
         } catch (err) {
             console.error(err);
+            if (isMountedRef.current) setError('Failed to load logs');
         }
     };
 
@@ -229,6 +273,7 @@ const JournalPage = () => {
                 </div>
                 <div className="journal-status">{saveLabel}</div>
             </header>
+            {error ? <div className="muted" style={{ color: '#f38ba8', padding: '8px 16px 0' }}>{error}</div> : null}
             <section className="journal-editor" aria-label="Journal editor">
                 {loading ? (
                     <div className="muted" style={{ padding: 16 }}>Loading…</div>

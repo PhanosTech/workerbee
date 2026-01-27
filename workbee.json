@@ -2,71 +2,70 @@
   "meta": {
     "version": 1,
     "lastId": {
-      "categories": 2,
+      "categories": 1,
       "tasks": 1,
       "todos": 0,
       "logs": 0,
       "notes": 0,
-      "label_notes": 0,
-      "weekly_notes": 2
+      "label_notes": 1,
+      "weekly_notes": 0,
+      "journal_entries": 1
     }
   },
   "categories": [
     {
       "id": 1,
       "parent_id": null,
-      "name": "birukus",
+      "name": "test",
       "color": "#89b4fa",
       "position": 0,
-      "archived": 0
-    },
-    {
-      "id": 2,
-      "parent_id": null,
-      "name": "phanos",
-      "color": "#89b4fa",
-      "position": 1,
       "archived": 0
     }
   ],
   "tasks": [
     {
       "id": 1,
-      "category_id": 2,
-      "title": "task pilot shutdown",
+      "category_id": 1,
+      "title": "this could work",
       "description": "",
       "url": "",
       "task_type": "NONE",
       "story_points": 0,
       "priority": "NORMAL",
-      "status": "DONE",
+      "status": "BACKLOG",
       "board_position": 0,
       "archived": 0,
       "archived_at": null,
-      "created_at": "2026-01-14T16:40:25.590Z",
-      "started_at": "2026-01-14T16:40:27.503Z",
-      "doing_at": "2026-01-14T16:40:32.833Z",
-      "done_at": "2026-01-14T16:40:34.380Z"
+      "created_at": "2026-01-27T19:42:33.137Z",
+      "started_at": null,
+      "doing_at": null,
+      "done_at": null
     }
   ],
   "todos": [],
   "logs": [],
   "notes": [],
-  "label_notes": [],
-  "weekly_notes": [
+  "label_notes": [
     {
       "id": 1,
-      "week_start": "2026-01-12",
-      "content": "",
-      "created_at": "2026-01-14T22:42:56.052Z",
-      "updated_at": "2026-01-14T22:42:56.052Z"
-    },
+      "category_id": 1,
+      "title": "oh my",
+      "content": "<p>so this does work</p><ul data-type=\"taskList\"><li data-checked=\"false\" data-type=\"taskItem\"><label><input type=\"checkbox\"><span></span></label><div><p>check item 1</p></div></li><li data-checked=\"true\" data-type=\"taskItem\"><label><input type=\"checkbox\" checked=\"checked\"><span></span></label><div><p>check item 2</p></div></li><li data-checked=\"false\" data-type=\"taskItem\"><label><input type=\"checkbox\"><span></span></label><div><p>check item 3</p></div></li></ul><p></p><ul data-type=\"taskList\"><li data-checked=\"true\" data-type=\"taskItem\"><label><input type=\"checkbox\" checked=\"checked\"><span></span></label><div><p>oh this works no</p></div></li><li data-checked=\"true\" data-type=\"taskItem\"><label><input type=\"checkbox\" checked=\"checked\"><span></span></label><div><p>great</p></div></li><li data-checked=\"false\" data-type=\"taskItem\"><label><input type=\"checkbox\"><span></span></label><div><p></p></div></li></ul><p></p>",
+      "type": "work_notes",
+      "created_at": "2026-01-27T19:42:42.379Z",
+      "updated_at": "2026-01-27T20:39:02.710Z",
+      "archived": 0,
+      "archived_at": null
+    }
+  ],
+  "weekly_notes": [],
+  "journal_entries": [
     {
-      "id": 2,
-      "week_start": "2026-01-05",
+      "id": 1,
+      "date": "2026-01-27",
       "content": "",
-      "created_at": "2026-01-14T22:43:00.306Z",
-      "updated_at": "2026-01-14T22:43:00.306Z"
+      "created_at": "2026-01-27T19:41:54.851Z",
+      "updated_at": "2026-01-27T19:41:54.852Z"
     }
   ]
 }

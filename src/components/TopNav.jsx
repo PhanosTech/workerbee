@@ -11,6 +11,13 @@ const TopNav = ({ activeTab, setActiveTab, theme, setTheme }) => {
             <nav className="topbar-nav" aria-label="Primary">
                 <button
                     type="button"
+                    className={`topbar-tab ${activeTab === 'journal' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('journal')}
+                >
+                    Logs
+                </button>
+                <button
+                    type="button"
                     className={`topbar-tab ${activeTab === 'kanban' ? 'active' : ''}`}
                     onClick={() => setActiveTab('kanban')}
                 >
@@ -29,13 +36,6 @@ const TopNav = ({ activeTab, setActiveTab, theme, setTheme }) => {
                     onClick={() => setActiveTab('notes')}
                 >
                     Notes
-                </button>
-                <button
-                    type="button"
-                    className={`topbar-tab ${activeTab === 'journal' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('journal')}
-                >
-                    Journal
                 </button>
                 <button
                     type="button"

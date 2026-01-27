@@ -4,6 +4,8 @@ import StarterKit from '@tiptap/starter-kit';
 import Link from '@tiptap/extension-link';
 import Placeholder from '@tiptap/extension-placeholder';
 import Image from '@tiptap/extension-image';
+import TaskList from '@tiptap/extension-task-list';
+import TaskItem from '@tiptap/extension-task-item';
 import { NodeSelection } from '@tiptap/pm/state';
 
 const DEFAULT_IMAGE_WIDTH_PX = 720;
@@ -101,7 +103,13 @@ const TiptapEditor = ({
 }) => {
     const editor = useEditor({
         extensions: [
-            StarterKit,
+            StarterKit.configure({
+                link: false,
+            }),
+            TaskList,
+            TaskItem.configure({
+                nested: true,
+            }),
             Link.configure({
                 openOnClick: !editable,
                 autolink: true,
@@ -260,6 +268,14 @@ const TiptapEditor = ({
                         title="Bullet List"
                     >
                         • List
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => editor.chain().focus().toggleTaskList().run()}
+                        className={editor.isActive('taskList') ? 'is-active' : ''}
+                        title="Checklist"
+                    >
+                        ☑︎ List
                     </button>
                     <button
                         type="button"
