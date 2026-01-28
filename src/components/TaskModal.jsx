@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { api } from '../api';
 import TiptapEditor from './TiptapEditor';
 
@@ -27,6 +27,7 @@ const moveToEnd = (items, movingId) => {
 
 const TaskModal = ({ taskId, onClose, onUpdate }) => {
     const [task, setTask] = useState(null);
+    const [taskDirty, setTaskDirty] = useState(false);
     const [todos, setTodos] = useState([]);
     const [logs, setLogs] = useState([]);
     const [notes, setNotes] = useState([]);
@@ -51,9 +52,15 @@ const TaskModal = ({ taskId, onClose, onUpdate }) => {
     const [copyingNote, setCopyingNote] = useState(false);
     const [copyStatus, setCopyStatus] = useState(null);
     const [copyFoldersLoading, setCopyFoldersLoading] = useState(false);
+    const taskDirtyRef = useRef(false);
 
     useEffect(() => {
-        loadTaskData();
+        taskDirtyRef.current = taskDirty;
+    }, [taskDirty]);
+
+    useEffect(() => {
+        setTaskDirty(false);
+        loadTaskData({ preserveDraft: false });
     }, [taskId]);
 
     useEffect(() => {
@@ -62,16 +69,30 @@ const TaskModal = ({ taskId, onClose, onUpdate }) => {
         loadLabelNotes(task.category_id);
     }, [notesTab, task?.category_id]);
 
-    const loadTaskData = async () => {
+    const loadTaskData = async ({ preserveDraft = true } = {}) => {
         try {
             const data = await api.getTask(taskId);
-            setTask(data);
+            setTask((prev) => {
+                if (!data) return prev;
+                if (preserveDraft && taskDirtyRef.current && prev?.id === data.id) {
+                    return { ...data, ...prev };
+                }
+                return data;
+            });
+            if (!(preserveDraft && taskDirtyRef.current)) {
+                setTaskDirty(false);
+            }
             setTodos(data.todos || []);
             setLogs(data.logs || []);
             setNotes(data.notes || []);
         } catch (err) {
             console.error(err);
         }
+    };
+
+    const updateTaskDraft = (updates) => {
+        setTask((prev) => (prev ? { ...prev, ...updates } : prev));
+        setTaskDirty(true);
     };
 
     const loadLabelNotes = async (categoryId) => {
@@ -179,6 +200,7 @@ const TaskModal = ({ taskId, onClose, onUpdate }) => {
             task_type: nextTask.task_type,
             due_date: nextTask.due_date
         });
+        setTaskDirty(false);
         onUpdate();
         onClose();
     };
@@ -423,7 +445,7 @@ const TaskModal = ({ taskId, onClose, onUpdate }) => {
                     <input
                         className="title-input"
                         value={task.title}
-                        onChange={e => setTask({ ...task, title: e.target.value })}
+                        onChange={(e) => updateTaskDraft({ title: e.target.value })}
                     />
                     <button className="close-btn" onClick={onClose}>&times;</button>
                 </div>
@@ -434,7 +456,7 @@ const TaskModal = ({ taskId, onClose, onUpdate }) => {
                             <label>Description</label>
                             <textarea
                                 value={task.description || ''}
-                                onChange={e => setTask({ ...task, description: e.target.value })}
+                                onChange={(e) => updateTaskDraft({ description: e.target.value })}
                             />
                         </section>
                         <section>
@@ -442,7 +464,7 @@ const TaskModal = ({ taskId, onClose, onUpdate }) => {
                             <input
                                 type="text"
                                 value={task.url || ''}
-                                onChange={e => setTask({ ...task, url: e.target.value })}
+                                onChange={(e) => updateTaskDraft({ url: e.target.value })}
                             />
                         </section>
                         <section>
@@ -450,7 +472,7 @@ const TaskModal = ({ taskId, onClose, onUpdate }) => {
                             <input
                                 type="date"
                                 value={task.due_date ? task.due_date.split('T')[0] : ''}
-                                onChange={e => setTask({ ...task, due_date: e.target.value })}
+                                onChange={(e) => updateTaskDraft({ due_date: e.target.value })}
                             />
                         </section>
                         <section>
@@ -460,14 +482,14 @@ const TaskModal = ({ taskId, onClose, onUpdate }) => {
                                 min="0"
                                 step="1"
                                 value={Number.isFinite(Number(task.story_points)) ? Number(task.story_points) : 0}
-                                onChange={(e) => setTask({ ...task, story_points: Number(e.target.value) || 0 })}
+                                onChange={(e) => updateTaskDraft({ story_points: Number(e.target.value) || 0 })}
                             />
                         </section>
                         <section>
                             <label>Priority</label>
                             <select
                                 value={(task.priority || 'NORMAL').toUpperCase()}
-                                onChange={(e) => setTask({ ...task, priority: e.target.value })}
+                                onChange={(e) => updateTaskDraft({ priority: e.target.value })}
                             >
                                 <option value="NORMAL">Normal</option>
                                 <option value="IMPORTANT">Important</option>
@@ -478,7 +500,7 @@ const TaskModal = ({ taskId, onClose, onUpdate }) => {
                             <label>Type</label>
                             <select
                                 value={String(task.task_type || 'NONE').toUpperCase()}
-                                onChange={(e) => setTask({ ...task, task_type: e.target.value })}
+                                onChange={(e) => updateTaskDraft({ task_type: e.target.value })}
                             >
                                 <option value="NONE">None</option>
                                 <option value="MEETING">Meeting</option>
@@ -490,7 +512,7 @@ const TaskModal = ({ taskId, onClose, onUpdate }) => {
                             <label>Status</label>
                             <select
                                 value={task.status}
-                                onChange={(e) => setTask({ ...task, status: e.target.value })}
+                                onChange={(e) => updateTaskDraft({ status: e.target.value })}
                             >
                                 <option value="BACKLOG">Backlog</option>
                                 <option value="STARTED">Started</option>

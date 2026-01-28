@@ -4,12 +4,12 @@
     "lastId": {
       "categories": 1,
       "tasks": 1,
-      "todos": 0,
+      "todos": 4,
       "logs": 0,
       "notes": 0,
       "label_notes": 1,
       "weekly_notes": 0,
-      "journal_entries": 1
+      "journal_entries": 2
     }
   },
   "categories": [
@@ -32,17 +32,46 @@
       "task_type": "NONE",
       "story_points": 0,
       "priority": "NORMAL",
-      "status": "BACKLOG",
+      "status": "STARTED",
       "board_position": 0,
       "archived": 0,
       "archived_at": null,
       "created_at": "2026-01-27T19:42:33.137Z",
-      "started_at": null,
+      "started_at": "2026-01-27T23:45:43.356Z",
       "doing_at": null,
       "done_at": null
     }
   ],
-  "todos": [],
+  "todos": [
+    {
+      "id": 1,
+      "task_id": 1,
+      "text": "this is",
+      "completed": 0,
+      "position": 0
+    },
+    {
+      "id": 2,
+      "task_id": 1,
+      "text": "weird",
+      "completed": 0,
+      "position": 1
+    },
+    {
+      "id": 3,
+      "task_id": 1,
+      "text": "task2",
+      "completed": 0,
+      "position": 2
+    },
+    {
+      "id": 4,
+      "task_id": 1,
+      "text": "align to left",
+      "completed": 0,
+      "position": 3
+    }
+  ],
   "logs": [],
   "notes": [],
   "label_notes": [
@@ -66,6 +95,13 @@
       "content": "",
       "created_at": "2026-01-27T19:41:54.851Z",
       "updated_at": "2026-01-27T19:41:54.852Z"
+    },
+    {
+      "id": 2,
+      "date": "2026-01-28",
+      "content": "",
+      "created_at": "2026-01-28T15:02:26.514Z",
+      "updated_at": "2026-01-28T15:02:26.515Z"
     }
   ]
 }

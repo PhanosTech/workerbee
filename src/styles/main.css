@@ -857,10 +857,6 @@ textarea:focus-visible {
     margin-bottom: 0;
 }
 
-.todo-list li span {
-    flex: 1;
-}
-
 .todo-item span {
     min-width: 0;
     overflow-wrap: anywhere;
