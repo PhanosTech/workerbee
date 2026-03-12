@@ -37,7 +37,7 @@ function createWindow() {
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
-            preload: path.join(__dirname, 'preload.ts')
+            preload: path.join(__dirname, 'preload.js')
         },
         autoHideMenuBar: true
     });
@@ -47,6 +47,13 @@ function createWindow() {
         mainWindow.webContents.openDevTools();
     } else {
         mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+        // Allow opening dev tools in production for debugging blank screens
+        mainWindow.webContents.on('before-input-event', (event, input) => {
+            if (input.control && input.shift && input.key.toLowerCase() === 'i') {
+                mainWindow?.webContents.openDevTools();
+                event.preventDefault();
+            }
+        });
     }
 }
 

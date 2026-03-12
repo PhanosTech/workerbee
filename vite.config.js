@@ -7,6 +7,7 @@ const apiPort = Number(process.env.API_PORT || 9339);
 
 // https://vitejs.dev/config/
 export default defineConfig({
+    base: './',
     plugins: [
         react(),
         VitePWA({
