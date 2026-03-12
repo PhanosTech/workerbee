@@ -178,8 +178,9 @@ export interface AppState {
     task_topics: TaskTopic[];
 }
 
-const DEFAULT_DB_DIR = path.join(__dirname, 'workbee_data');
-const dbDirPath = process.env.DB_PATH || DEFAULT_DB_DIR;
+const getDbDirPath = (): string => {
+    return process.env.DB_PATH || path.join(__dirname, 'workbee_data');
+};
 
 const nowIso = (): string => new Date().toISOString();
 
@@ -328,6 +329,7 @@ const bumpId = (table: keyof LastId): number => {
 
 const persist = async (): Promise<void> => {
     const st = getState();
+    const dbDirPath = getDbDirPath();
     await fsp.mkdir(dbDirPath, { recursive: true });
     for (const key of Object.keys(st) as (keyof AppState)[]) {
         if (key === 'meta') {
@@ -435,7 +437,14 @@ export const init = async (): Promise<void> => {
     if (initPromise) return initPromise;
     initPromise = (async () => {
         let loaded: any = null;
-        const legacyFile = path.join(__dirname, 'workbee.json');
+        const dbDirPath = getDbDirPath();
+        
+        // If DB_PATH is set (standard in prod), legacy file is next to the workbee_data dir.
+        // If not set, we look in __dirname.
+        const legacyFile = process.env.DB_PATH 
+            ? path.join(path.dirname(process.env.DB_PATH), 'workbee.json')
+            : path.join(__dirname, 'workbee.json');
+
         const dataDirExists = fs.existsSync(dbDirPath);
         const legacyFileExists = fs.existsSync(legacyFile);
 

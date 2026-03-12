@@ -13,10 +13,22 @@ tasks:
       - echo "Checking Taskfile... use 'task --list' to see available tasks"
 
   clean:
-    desc: Clean build outputs (bin/, dist/)
+    desc: Clean build outputs (bin/, dist/, build-output/)
     cmds:
       - >-
-        {{.NODE}} -e "const fs=require('fs'); const path=require('path'); const targets=['bin','dist','dist-ssr']; for (const t of targets){ try{ fs.rmSync(path.join(process.cwd(),t), {recursive:true, force:true}); } catch(e){} } console.log('Cleaned: ' + targets.join(', '));"
+        {{.NODE}} -e "const fs=require('fs'); const path=require('path'); const targets=['bin','dist','build-output','dist-ssr']; for (const t of targets){ try{ fs.rmSync(path.join(process.cwd(),t), {recursive:true, force:true}); } catch(e){} } console.log('Cleaned: ' + targets.join(', '));"
+
+  nuke:
+    desc: Force-kill any running app processes and deep-clean
+    cmds:
+      - 'task: clean'
+      - cmd: taskkill /F /IM WorkerBee.exe /T
+        ignore_error: true
+      - cmd: taskkill /F /IM electron.exe /T
+        ignore_error: true
+      - '{{.NODE}} -e "setTimeout(() => {}, 2000)"'
+      - 'task: clean'
+    platforms: [win32]
 
   cleanup:
     desc: Clean up build artifacts and node_modules

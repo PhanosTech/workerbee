@@ -9,7 +9,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "electron": "electron .",
-    "prepack": "rimraf bin && npm run build",
+    "prepack": "rimraf build-output && npm run build",
     "pack": "electron-builder --dir",
     "pack:win": "node scripts/pack-win.js"
   },
@@ -43,6 +43,7 @@
     "electron": "^28.2.0",
     "electron-builder": "^24.9.1",
     "rcedit": "^5.0.2",
+    "rimraf": "^5.0.5",
     "vite": "^7.3.1",
     "vite-plugin-pwa": "^1.2.0",
     "vitest": "^4.1.0",
@@ -62,7 +63,7 @@
       "favicon.ico"
     ],
     "directories": {
-      "output": "bin"
+      "output": "build-output"
     },
     "win": {
       "target": "dir",
