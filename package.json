@@ -9,6 +9,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "electron": "electron .",
+    "prepack": "rimraf bin && npm run build",
     "pack": "electron-builder --dir",
     "pack:win": "node scripts/pack-win.js"
   },
@@ -25,7 +26,9 @@
     "@tiptap/react": "^3.15.3",
     "@tiptap/starter-kit": "^3.15.3",
     "react": "^19.2.3",
-    "react-dom": "^19.2.3"
+    "react-dom": "^19.2.3",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",
@@ -40,8 +43,6 @@
     "electron": "^28.2.0",
     "electron-builder": "^24.9.1",
     "rcedit": "^5.0.2",
-    "ts-node": "^10.9.2",
-    "typescript": "^5.9.3",
     "vite": "^7.3.1",
     "vite-plugin-pwa": "^1.2.0",
     "vitest": "^4.1.0",
@@ -50,12 +51,13 @@
   "build": {
     "productName": "WorkerBee",
     "appId": "com.workbee.app",
-    "asar": false,
+    "asar": true,
     "files": [
       "package.json",
+      "main.js",
       "electron/**",
       "dist/**",
-      "database.js",
+      "database.ts",
       "logo.png",
       "favicon.ico"
     ],
