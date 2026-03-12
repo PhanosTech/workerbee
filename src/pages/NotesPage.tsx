@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import TiptapEditor from '../components/TiptapEditor';
+import { api, Category, LabelNote, ArchiveData, Task, Note } from '../api';
+import { NotesFocus } from '../App';
 
-const API_BASE = import.meta.env.VITE_API_BASE || `http://${window.location.hostname}:9339/api`;
+type UnifiedNote = (LabelNote & { task_id?: never }) | (Note & { category_id?: number; task_id: number; created_at?: string; updated_at?: string; archived?: number; archived_at?: string | null });
 
 const NOTE_TYPE = 'work_notes';
 const MODAL_SCHEME_PREFIX = 'workbee://note/';
@@ -11,14 +13,14 @@ const SHOW_SUBFOLDER_NOTES_STORAGE_KEY = 'wb-notes-show-subfolder-notes-v1';
 const SELECTED_NOTE_STORAGE_KEY = 'wb-notes-selected-note-id';
 const DEFAULT_FOLDER_COLOR = '#89b4fa';
 
-const sortByPositionThenName = (a, b) => {
+const sortByPositionThenName = (a: Category, b: Category) => {
     const ap = Number(a?.position ?? 0);
     const bp = Number(b?.position ?? 0);
     if (ap !== bp) return ap - bp;
     return String(a?.name ?? '').localeCompare(String(b?.name ?? ''), undefined, { sensitivity: 'base' });
 };
 
-const copyText = async (text) => {
+const copyText = async (text: string) => {
     try {
         await navigator.clipboard?.writeText(text);
         return true;
@@ -42,25 +44,32 @@ const copyText = async (text) => {
     }
 };
 
-const buildNoteUrl = (noteId) => {
+const buildNoteUrl = (noteId: number) => {
     const base = `${window.location.origin}${window.location.pathname}`;
     return `${base}#/notes/${noteId}`;
 };
 
-const buildModalLink = (noteId) => `${MODAL_SCHEME_PREFIX}${noteId}`;
+const buildModalLink = (noteId: number) => `${MODAL_SCHEME_PREFIX}${noteId}`;
 
-function NotesPage({ focus, onOpenSearch }) {
-    const [categories, setCategories] = useState([]);
-    const [notesMap, setNotesMap] = useState({}); // { categoryId: [notes] }
-    const [selectedNote, setSelectedNote] = useState(null); // { id, title, content, category_id }
-    const [expandedCategories, setExpandedCategories] = useState(new Set());
-    const [defaultCategoryId, setDefaultCategoryId] = useState(() => {
+interface NotesPageProps {
+    focus?: NotesFocus | null;
+    onOpenSearch?: () => void;
+}
+
+const NotesPage: React.FC<NotesPageProps> = ({ focus, onOpenSearch }) => {
+    const [categories, setCategories] = useState<Category[]>([]);
+    const [notesMap, setNotesMap] = useState<Record<number, LabelNote[]>>({}); // { categoryId: [notes] }
+    const [tasksMap, setTasksMap] = useState<Record<number, Task[]>>({}); // { categoryId: [tasks] }
+    const [taskNotesMap, setTaskNotesMap] = useState<Record<number, Note[]>>({}); // { taskId: [notes] }
+    const [selectedNote, setSelectedNote] = useState<UnifiedNote | null>(null);
+    const [expandedCategories, setExpandedCategories] = useState<Set<number>>(new Set());
+    const [defaultCategoryId, setDefaultCategoryId] = useState<number | null>(() => {
         if (typeof window === 'undefined') return null;
         const raw = window.localStorage.getItem(DEFAULT_FOLDER_STORAGE_KEY);
         const parsed = raw ? Number(raw) : null;
-        return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+        return Number.isFinite(parsed) && parsed !== null && parsed > 0 ? parsed : null;
     });
-    const [showSubfolderNotes, setShowSubfolderNotes] = useState(() => {
+    const [showSubfolderNotes, setShowSubfolderNotes] = useState<boolean>(() => {
         if (typeof window === 'undefined') return false;
         const raw = window.localStorage.getItem(SHOW_SUBFOLDER_NOTES_STORAGE_KEY);
         if (!raw) return false;
@@ -70,46 +79,52 @@ function NotesPage({ focus, onOpenSearch }) {
             return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
         }
     });
-    const [createNoteForCategoryId, setCreateNoteForCategoryId] = useState(null);
-    const [createNoteTitle, setCreateNoteTitle] = useState('');
-    const [isLoading, setIsLoading] = useState(true);
-    const [modalNote, setModalNote] = useState(null); // { id, title, content, category_id }
-    const [modalError, setModalError] = useState(null);
-    const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
-    const [archiveStart, setArchiveStart] = useState('');
-    const [archiveEnd, setArchiveEnd] = useState('');
-    const [archiveWeeks, setArchiveWeeks] = useState('4');
-    const [archiveResults, setArchiveResults] = useState(null); // { startDate, endDate, tasks, notes }
-    const [archiveLoading, setArchiveLoading] = useState(false);
-    const [activeCategoryId, setActiveCategoryId] = useState(null);
-    const [folderMenuId, setFolderMenuId] = useState(null);
-    const [folderDraft, setFolderDraft] = useState({
+    const [createNoteForCategoryId, setCreateNoteForCategoryId] = useState<number | null>(null);
+    const [createNoteTitle, setCreateNoteTitle] = useState<string>('');
+    const [isLoading, setIsLoading] = useState<boolean>(true);
+    const [modalNote, setModalNote] = useState<UnifiedNote | null>(null);
+    const [modalError, setModalError] = useState<string | null>(null);
+    const [archiveDialogOpen, setArchiveDialogOpen] = useState<boolean>(false);
+    const [archiveStart, setArchiveStart] = useState<string>('');
+    const [archiveEnd, setArchiveEnd] = useState<string>('');
+    const [archiveWeeks, setArchiveWeeks] = useState<string>('4');
+    const [archiveResults, setArchiveResults] = useState<ArchiveData | null>(null); // { startDate, endDate, tasks, notes }
+    const [archiveLoading, setArchiveLoading] = useState<boolean>(false);
+    const [activeCategoryId, setActiveCategoryId] = useState<number | null>(null);
+    const [folderMenuId, setFolderMenuId] = useState<number | null>(null);
+    const [folderDraft, setFolderDraft] = useState<{
+        id: number | null;
+        parent_id: number | null;
+        position: number;
+        name: string;
+        color: string;
+    }>({
         id: null,
         parent_id: null,
         position: 0,
         name: '',
         color: DEFAULT_FOLDER_COLOR,
     });
-    const [noteDirty, setNoteDirty] = useState(false);
+    const [noteDirty, setNoteDirty] = useState<boolean>(false);
 
-    const createNoteInputRef = useRef(null);
-    const didApplyDefaultFolderRef = useRef(false);
-    const didApplyStoredSubfolderExpandRef = useRef(false);
-    const notesFetchSeqRef = useRef(new Map());
-    const folderMenuRef = useRef(null);
-    const autoSaveTimerRef = useRef(null);
-    const selectedNoteRef = useRef(null);
-    const noteDirtyRef = useRef(false);
-    const isMountedRef = useRef(true);
+    const createNoteInputRef = useRef<HTMLInputElement>(null);
+    const didApplyDefaultFolderRef = useRef<boolean>(false);
+    const didApplyStoredSubfolderExpandRef = useRef<boolean>(false);
+    const notesFetchSeqRef = useRef<Map<number, number>>(new Map());
+    const folderMenuRef = useRef<HTMLDivElement>(null);
+    const autoSaveTimerRef = useRef<number | null>(null);
+    const selectedNoteRef = useRef<UnifiedNote | null>(null);
+    const noteDirtyRef = useRef<boolean>(false);
+    const isMountedRef = useRef<boolean>(true);
 
     const categoryById = useMemo(() => {
-        const map = new Map();
+        const map = new Map<number, Category>();
         categories.forEach((c) => map.set(c.id, c));
         return map;
     }, [categories]);
 
     const childrenByParentId = useMemo(() => {
-        const map = new Map();
+        const map = new Map<number | null, Category[]>();
         categories.forEach((c) => {
             const key = c.parent_id ?? null;
             const list = map.get(key) || [];
@@ -122,12 +137,12 @@ function NotesPage({ focus, onOpenSearch }) {
         return map;
     }, [categories]);
 
-    const getDescendantCategoryIds = (rootId) => {
-        const out = [];
+    const getDescendantCategoryIds = (rootId: number) => {
+        const out: number[] = [];
         const stack = [rootId];
         const seen = new Set([rootId]);
         while (stack.length) {
-            const currentId = stack.pop();
+            const currentId = stack.pop()!;
             const children = childrenByParentId.get(currentId) || [];
             for (const child of children) {
                 if (!child?.id || seen.has(child.id)) continue;
@@ -139,21 +154,21 @@ function NotesPage({ focus, onOpenSearch }) {
         return out;
     };
 
-    const getAncestorCategoryIds = (categoryId) => {
-        const out = [];
+    const getAncestorCategoryIds = (categoryId: number) => {
+        const out: number[] = [];
         let current = categoryById.get(categoryId);
-        const seen = new Set();
+        const seen = new Set<number>();
         while (current && !seen.has(current.id)) {
             out.push(current.id);
             seen.add(current.id);
-            current = current.parent_id ? categoryById.get(current.parent_id) : null;
+            current = current.parent_id ? categoryById.get(current.parent_id) : undefined;
         }
         return out;
     };
 
-    const openCategory = (categoryId, { includeAncestors = false, includeDescendants = false } = {}) => {
+    const openCategory = (categoryId: number, { includeAncestors = false, includeDescendants = false } = {}) => {
         if (!categoryId) return;
-        const ids = new Set();
+        const ids = new Set<number>();
         if (includeAncestors) {
             getAncestorCategoryIds(categoryId).forEach((id) => ids.add(id));
         } else {
@@ -181,9 +196,9 @@ function NotesPage({ focus, onOpenSearch }) {
         }
     };
 
-    const closeCategory = (categoryId, { includeDescendants = false } = {}) => {
+    const closeCategory = (categoryId: number, { includeDescendants = false } = {}) => {
         if (!categoryId) return;
-        const ids = new Set([categoryId]);
+        const ids = new Set<number>([categoryId]);
         if (includeDescendants) {
             getDescendantCategoryIds(categoryId).forEach((id) => ids.add(id));
         }
@@ -265,8 +280,8 @@ function NotesPage({ focus, onOpenSearch }) {
 
     useEffect(() => {
         if (!folderMenuId) return;
-        const handleClick = (event) => {
-            if (folderMenuRef.current?.contains(event.target)) return;
+        const handleClick = (event: MouseEvent) => {
+            if (folderMenuRef.current?.contains(event.target as Node)) return;
             closeFolderMenu();
         };
         window.addEventListener('mousedown', handleClick);
@@ -306,7 +321,7 @@ function NotesPage({ focus, onOpenSearch }) {
         if (!categories.length) return;
         const valid = new Set(categories.map((c) => c.id));
         setExpandedCategories((prev) => {
-            const next = new Set();
+            const next = new Set<number>();
             for (const id of prev) {
                 if (valid.has(id)) next.add(id);
             }
@@ -325,9 +340,7 @@ function NotesPage({ focus, onOpenSearch }) {
 
     const fetchCategories = async () => {
         try {
-            const res = await fetch(`${API_BASE}/categories`);
-            if (!res.ok) throw new Error('Failed to fetch categories');
-            const data = await res.json();
+            const data = await api.getCategories();
             setCategories(data);
         } catch (err) {
             console.error(err);
@@ -340,37 +353,42 @@ function NotesPage({ focus, onOpenSearch }) {
         fetchCategories();
     }, []);
 
-    const fetchNotesForCategory = async (categoryId) => {
+    const fetchNotesForCategory = async (categoryId: number) => {
         const seq = (notesFetchSeqRef.current.get(categoryId) || 0) + 1;
         notesFetchSeqRef.current.set(categoryId, seq);
         try {
-            const res = await fetch(`${API_BASE}/categories/${categoryId}/notes?type=${encodeURIComponent(NOTE_TYPE)}`);
-            if (!res.ok) throw new Error('Failed to fetch notes');
-            const data = await res.json();
+            const [labelNotes, tasks] = await Promise.all([
+                api.getLabelNotes(categoryId, NOTE_TYPE),
+                api.getTasks({ category_id: categoryId })
+            ]);
+
             if (notesFetchSeqRef.current.get(categoryId) !== seq) return;
-            setNotesMap((prev) => ({ ...prev, [categoryId]: data }));
+            setNotesMap((prev) => ({ ...prev, [categoryId]: labelNotes }));
+            setTasksMap((prev) => ({ ...prev, [categoryId]: tasks }));
+
+            // Fetch notes for each task
+            tasks.forEach(async (task) => {
+                try {
+                    const tNotes = await api.getTaskNotes(task.id);
+                    setTaskNotesMap((prev) => ({ ...prev, [task.id]: tNotes }));
+                } catch (err) {
+                    console.error(`Failed to fetch notes for task ${task.id}:`, err);
+                }
+            });
         } catch (err) {
             console.error(err);
         }
     };
 
-    const fetchNoteById = async (noteId) => {
-        const res = await fetch(`${API_BASE}/label_notes/${noteId}`);
-        if (!res.ok) return null;
-        return res.json();
+    const fetchNoteById = async (noteId: number) => {
+        return api.getLabelNote(noteId);
     };
 
-    const fetchArchive = async ({ startDate, endDate, weeks }) => {
-        const params = new URLSearchParams();
-        if (startDate) params.set('startDate', startDate);
-        if (endDate) params.set('endDate', endDate);
-        if (weeks) params.set('weeks', weeks);
-        const res = await fetch(`${API_BASE}/archive?${params.toString()}`);
-        if (!res.ok) throw new Error('Failed to fetch archive');
-        return res.json();
+    const fetchArchive = async ({ startDate, endDate, weeks }: { startDate: string; endDate: string; weeks: string }) => {
+        return api.getArchive(startDate, endDate, weeks);
     };
 
-    const toggleCategory = (categoryId) => {
+    const toggleCategory = (categoryId: number) => {
         setActiveCategoryId(categoryId);
         const isOpen = expandedCategories.has(categoryId);
         if (isOpen) {
@@ -380,21 +398,21 @@ function NotesPage({ focus, onOpenSearch }) {
         openCategory(categoryId, { includeDescendants: showSubfolderNotes });
     };
 
-    const expandAncestors = (categoryId) => {
+    const expandAncestors = (categoryId: number) => {
         setExpandedCategories((prev) => {
             const next = new Set(prev);
             let current = categoryById.get(categoryId);
-            const seen = new Set();
+            const seen = new Set<number>();
             while (current && !seen.has(current.id)) {
                 next.add(current.id);
                 seen.add(current.id);
-                current = current.parent_id ? categoryById.get(current.parent_id) : null;
+                current = current.parent_id ? categoryById.get(current.parent_id) : undefined;
             }
             return next;
         });
     };
 
-    const openFolderMenu = (category) => {
+    const openFolderMenu = (category: Category) => {
         if (!category?.id) return;
         setActiveCategoryId(category.id);
         setFolderMenuId(category.id);
@@ -423,17 +441,13 @@ function NotesPage({ focus, onOpenSearch }) {
         const name = folderDraft.name.trim();
         if (!name) return;
         try {
-            const res = await fetch(`${API_BASE}/categories/${folderDraft.id}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    parent_id: folderDraft.parent_id,
-                    name,
-                    color: folderDraft.color,
-                    position: folderDraft.position,
-                }),
-            });
-            if (!res.ok) throw new Error('Failed to update folder');
+            await api.updateCategory(
+                folderDraft.id,
+                folderDraft.parent_id,
+                name,
+                folderDraft.color,
+                folderDraft.position
+            );
             await fetchCategories();
             closeFolderMenu();
         } catch (err) {
@@ -446,13 +460,14 @@ function NotesPage({ focus, onOpenSearch }) {
         if (!folderDraft.id) return;
         if (!window.confirm('Delete this folder and its notes?')) return;
         try {
-            const res = await fetch(`${API_BASE}/categories/${folderDraft.id}`, { method: 'DELETE' });
-            if (!res.ok) throw new Error('Failed to delete folder');
+            await api.archiveCategory(folderDraft.id);
             if (defaultCategoryId === folderDraft.id) setDefaultCategoryId(null);
             if (selectedNote?.category_id === folderDraft.id) setSelectedNote(null);
             setNotesMap((prev) => {
                 const next = { ...prev };
-                delete next[folderDraft.id];
+                if (folderDraft.id !== null) {
+                   delete next[folderDraft.id];
+                }
                 return next;
             });
             closeFolderMenu();
@@ -463,12 +478,12 @@ function NotesPage({ focus, onOpenSearch }) {
         }
     };
 
-    const handleToggleDefaultFolder = (categoryId) => {
+    const handleToggleDefaultFolder = (categoryId: number) => {
         if (!categoryId) return;
         setDefaultCategoryId((prev) => (prev === categoryId ? null : categoryId));
     };
 
-    const flushAutoSave = (note) => {
+    const flushAutoSave = (note: UnifiedNote | null) => {
         if (!noteDirtyRef.current) return;
         if (!note?.id) return;
         if (autoSaveTimerRef.current) {
@@ -478,18 +493,16 @@ function NotesPage({ focus, onOpenSearch }) {
         handleSaveNote(note);
     };
 
-    const handleSelectNote = (note) => {
+    const handleSelectNote = (note: UnifiedNote | null) => {
         flushAutoSave(selectedNoteRef.current);
         setSelectedNote(note);
         setNoteDirty(false);
         if (note?.category_id) {
             setActiveCategoryId(note.category_id);
-        }
-        if (note?.category_id) {
             expandAncestors(note.category_id);
             if (showSubfolderNotes) openCategory(note.category_id, { includeDescendants: true });
         }
-        if (note?.id) {
+        if (note?.id && !note.task_id) {
             const nextHash = `#/notes/${note.id}`;
             if (window.location.hash !== nextHash) {
                 window.history.replaceState(null, '', nextHash);
@@ -529,11 +542,11 @@ function NotesPage({ focus, onOpenSearch }) {
         const hash = String(window.location.hash || '');
         const match = hash.match(/#\/notes\/(\d+)/);
         const fromHash = match ? Number(match[1]) : null;
-        let storedId = null;
+        let storedId: number | null = null;
         try {
             const raw = window.localStorage.getItem(SELECTED_NOTE_STORAGE_KEY);
             const parsed = raw ? Number(raw) : null;
-            storedId = Number.isFinite(parsed) ? parsed : null;
+            storedId = (parsed !== null && Number.isFinite(parsed)) ? parsed : null;
         } catch {
             storedId = null;
         }
@@ -554,25 +567,23 @@ function NotesPage({ focus, onOpenSearch }) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [focus?.noteId, categories.length, selectedNote, notesMap]);
 
-    const createNote = async (categoryId, title) => {
+    const createNote = async (categoryId: number, title: string) => {
         const trimmedTitle = String(title || '').trim();
         if (!trimmedTitle) return false;
 
         try {
-            const res = await fetch(`${API_BASE}/categories/${categoryId}/notes`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ title: trimmedTitle, content: '', type: NOTE_TYPE }),
-            });
-            if (!res.ok) throw new Error('Failed to create note');
-            const result = await res.json();
+            const result = await api.addLabelNote(categoryId, trimmedTitle, '', NOTE_TYPE);
 
-            const newNote = {
-                id: result.lastInsertRowid,
+            const newNote: LabelNote = {
+                id: result.lastInsertRowid!,
                 title: trimmedTitle,
                 content: '',
                 category_id: categoryId,
                 type: NOTE_TYPE,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+                archived: 0,
+                archived_at: null,
             };
 
             setNotesMap((prev) => ({
@@ -589,7 +600,7 @@ function NotesPage({ focus, onOpenSearch }) {
         }
     };
 
-    const startCreateNote = (categoryId) => {
+    const startCreateNote = (categoryId: number) => {
         if (!categoryId) return;
         if (createNoteForCategoryId === categoryId) {
             setCreateNoteForCategoryId(null);
@@ -607,7 +618,7 @@ function NotesPage({ focus, onOpenSearch }) {
         setCreateNoteTitle('');
     };
 
-    const handleSubmitCreateNote = async (e) => {
+    const handleSubmitCreateNote = async (e: React.FormEvent) => {
         e.preventDefault();
         const categoryId = createNoteForCategoryId;
         if (!categoryId) return;
@@ -617,26 +628,33 @@ function NotesPage({ focus, onOpenSearch }) {
         if (ok) cancelCreateNote();
     };
 
-    const handleSaveNote = async (note = selectedNote) => {
+    const handleSaveNote = async (note: UnifiedNote | null = selectedNote) => {
         if (!note) return;
         try {
-            await fetch(`${API_BASE}/label_notes/${note.id}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    title: note.title,
-                    content: note.content,
-                }),
-            });
-
-            if (isMountedRef.current) {
-                setNotesMap((prev) => {
-                    const list = prev[note.category_id] || [];
-                    return {
-                        ...prev,
-                        [note.category_id]: list.map((n) => (n.id === note.id ? note : n)),
-                    };
-                });
+            if ('task_id' in note && note.task_id) {
+                const taskId = note.task_id;
+                await api.updateNote(note.id, note.title, note.content);
+                if (isMountedRef.current) {
+                    setTaskNotesMap((prev) => {
+                        const list = prev[taskId] || [];
+                        return {
+                            ...prev,
+                            [taskId]: list.map((n: Note) => (n.id === note.id ? note : n)),
+                        };
+                    });
+                }
+            } else if ('category_id' in note && note.category_id) {
+                const categoryId = note.category_id;
+                await api.updateLabelNote(note.id, note.title, note.content);
+                if (isMountedRef.current) {
+                    setNotesMap((prev) => {
+                        const list = prev[categoryId] || [];
+                        return {
+                            ...prev,
+                            [categoryId]: list.map((n: LabelNote) => (n.id === note.id ? (note as LabelNote) : n)),
+                        };
+                    });
+                }
             }
             if (isMountedRef.current && selectedNote?.id === note.id) {
                 setNoteDirty(false);
@@ -673,7 +691,7 @@ function NotesPage({ focus, onOpenSearch }) {
         didApplyStoredSubfolderExpandRef.current = true;
         const roots = Array.from(expandedCategories);
         if (!roots.length) return;
-        const idsToOpen = new Set();
+        const idsToOpen = new Set<number>();
         roots.forEach((id) => getDescendantCategoryIds(id).forEach((d) => idsToOpen.add(d)));
         if (!idsToOpen.size) return;
 
@@ -722,7 +740,7 @@ function NotesPage({ focus, onOpenSearch }) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isLoading, categories.length, selectedNote, focus?.noteId, defaultCategoryId, showSubfolderNotes, categoryById]);
 
-    const openModalNote = async (noteId) => {
+    const openModalNote = async (noteId: number) => {
         setModalError(null);
         try {
             const row = await fetchNoteById(noteId);
@@ -744,11 +762,10 @@ function NotesPage({ focus, onOpenSearch }) {
         setModalError(null);
     };
 
-    const handleEditorClickCapture = (e) => {
-        const target = e.target;
-        if (!(target instanceof HTMLElement)) return;
-        const anchor = target.closest?.('a');
-        if (!(anchor instanceof HTMLAnchorElement)) return;
+    const handleEditorClickCapture = (e: React.MouseEvent) => {
+        const target = e.target as HTMLElement;
+        const anchor = target.closest?.('a') as HTMLAnchorElement | null;
+        if (!anchor) return;
         const href = anchor.getAttribute('href') || '';
         if (!href.startsWith(MODAL_SCHEME_PREFIX)) return;
         const id = Number(href.slice(MODAL_SCHEME_PREFIX.length));
@@ -758,10 +775,10 @@ function NotesPage({ focus, onOpenSearch }) {
         openModalNote(id);
     };
 
-    const handleDeleteNote = async (noteId, categoryId) => {
+    const handleDeleteNote = async (noteId: number, categoryId: number) => {
         if (!window.confirm('Delete this note?')) return;
         try {
-            await fetch(`${API_BASE}/label_notes/${noteId}`, { method: 'DELETE' });
+            await api.deleteLabelNote(noteId);
             setNotesMap((prev) => ({
                 ...prev,
                 [categoryId]: (prev[categoryId] || []).filter((n) => n.id !== noteId),
@@ -775,10 +792,10 @@ function NotesPage({ focus, onOpenSearch }) {
         }
     };
 
-    const handleArchiveNote = async (noteId, categoryId) => {
+    const handleArchiveNote = async (noteId: number, categoryId: number) => {
         if (!window.confirm('Archive this note?')) return;
         try {
-            await fetch(`${API_BASE}/label_notes/${noteId}/archive`, { method: 'POST' });
+            await api.archiveLabelNote(noteId);
             setNotesMap((prev) => ({
                 ...prev,
                 [categoryId]: (prev[categoryId] || []).filter((n) => n.id !== noteId),
@@ -789,9 +806,9 @@ function NotesPage({ focus, onOpenSearch }) {
         }
     };
 
-    const handleUnarchiveNote = async (noteId) => {
+    const handleUnarchiveNote = async (noteId: number) => {
         try {
-            await fetch(`${API_BASE}/label_notes/${noteId}/unarchive`, { method: 'POST' });
+            await api.unarchiveLabelNote(noteId);
             setArchiveResults((prev) => {
                 if (!prev) return prev;
                 return { ...prev, notes: (prev.notes || []).filter((n) => n.id !== noteId) };
@@ -801,13 +818,14 @@ function NotesPage({ focus, onOpenSearch }) {
         }
     };
 
-    const renderCategoryTree = (parentId = null, depth = 0) => {
+    const renderCategoryTree = (parentId: number | null = null, depth = 0): React.ReactNode => {
         const nodes = childrenByParentId.get(parentId) || [];
         if (!nodes.length) return null;
 
         return nodes.map((cat) => {
             const isOpen = expandedCategories.has(cat.id);
             const notes = notesMap[cat.id] || [];
+            const tasks = tasksMap[cat.id] || [];
             const isActive = activeCategoryId === cat.id;
             const isMenuOpen = folderMenuId === cat.id;
 
@@ -959,7 +977,7 @@ function NotesPage({ focus, onOpenSearch }) {
                                 <button
                                     key={note.id}
                                     type="button"
-                                    className={`notes-tree-row notes-tree-note ${selectedNote?.id === note.id ? 'active' : ''}`}
+                                    className={`notes-tree-row notes-tree-note ${selectedNote?.id === note.id && !selectedNote.task_id ? 'active' : ''}`}
                                     onClick={() => handleSelectNote(note)}
                                     style={{ paddingLeft: depth * 16 + 20 }}
                                 >
@@ -969,7 +987,31 @@ function NotesPage({ focus, onOpenSearch }) {
                                     <span className="notes-tree-title">{note.title}</span>
                                 </button>
                             ))}
-                            {notesMap[cat.id] && notes.length === 0 && (
+                            {tasks.filter(t => (taskNotesMap[t.id] || []).length > 0).map(task => (
+                                <div key={`task-${task.id}`}>
+                                    <div className="notes-tree-row notes-tree-task muted" style={{ paddingLeft: depth * 16 + 20, fontSize: '0.85rem', cursor: 'default' }}>
+                                        <span className="notes-tree-icon" aria-hidden="true">
+                                            📋
+                                        </span>
+                                        <span className="notes-tree-title" style={{ fontStyle: 'italic' }}>{task.title}</span>
+                                    </div>
+                                    {(taskNotesMap[task.id] || []).map(tn => (
+                                        <button
+                                            key={`tn-${tn.id}`}
+                                            type="button"
+                                            className={`notes-tree-row notes-tree-note ${selectedNote?.id === tn.id && selectedNote.task_id === tn.task_id ? 'active' : ''}`}
+                                            onClick={() => handleSelectNote({ ...tn, category_id: cat.id })}
+                                            style={{ paddingLeft: depth * 16 + 40 }}
+                                        >
+                                            <span className="notes-tree-icon" aria-hidden="true">
+                                                📌
+                                            </span>
+                                            <span className="notes-tree-title">{tn.title || '(Untitled Task Note)'}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            ))}
+                            {notesMap[cat.id] && notes.length === 0 && tasks.filter(t => (taskNotesMap[t.id] || []).length > 0).length === 0 && (
                                 <div className="notes-tree-empty" style={{ paddingLeft: depth * 16 + 20 }}>
                                     No notes
                                 </div>
@@ -1013,7 +1055,7 @@ function NotesPage({ focus, onOpenSearch }) {
                                     setShowSubfolderNotes(next);
                                     if (!next) return;
                                     const roots = Array.from(expandedCategories);
-                                    const idsToOpen = new Set();
+                                    const idsToOpen = new Set<number>();
                                     roots.forEach((id) =>
                                         getDescendantCategoryIds(id).forEach((descId) => idsToOpen.add(descId))
                                     );
@@ -1052,7 +1094,7 @@ function NotesPage({ focus, onOpenSearch }) {
                         <header className="note-header">
                             <input
                                 className="note-title-input"
-                                value={selectedNote.title}
+                                value={selectedNote.title || ''}
                                 onChange={(e) => {
                                     setSelectedNote({ ...selectedNote, title: e.target.value });
                                     setNoteDirty(true);
@@ -1082,28 +1124,32 @@ function NotesPage({ focus, onOpenSearch }) {
                                 >
                                     Copy popup link
                                 </button>
-                                <button
-                                    type="button"
-                                    className="btn danger"
-                                    onClick={() => handleArchiveNote(selectedNote.id, selectedNote.category_id)}
-                                >
-                                    Archive
-                                </button>
-                                <button
-                                    type="button"
-                                    className="link-btn danger-link"
-                                    onClick={() => handleDeleteNote(selectedNote.id, selectedNote.category_id)}
-                                    title="Permanently delete this note"
-                                >
-                                    Delete
-                                </button>
+                                {!selectedNote.task_id && (
+                                    <>
+                                        <button
+                                            type="button"
+                                            className="btn danger"
+                                            onClick={() => handleArchiveNote(selectedNote.id, selectedNote.category_id!)}
+                                        >
+                                            Archive
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className="link-btn danger-link"
+                                            onClick={() => handleDeleteNote(selectedNote.id, selectedNote.category_id!)}
+                                            title="Permanently delete this note"
+                                        >
+                                            Delete
+                                        </button>
+                                    </>
+                                )}
                             </div>
                         </header>
                         <div className="note-editor-wrapper" onClickCapture={handleEditorClickCapture}>
                             <TiptapEditor
-                                content={selectedNote.content}
+                                content={selectedNote.content || ''}
                                 onChange={(html) => {
-                                    setSelectedNote((prev) => ({ ...prev, content: html }));
+                                    setSelectedNote((prev) => prev ? ({ ...prev, content: html }) : null);
                                     setNoteDirty(true);
                                 }}
                                 onRequestSave={handleSaveNote}

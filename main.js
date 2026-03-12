@@ -1,2 +1,2 @@
-require('./electron/main.js');
-
+require('ts-node').register();
+require('./electron/main.ts');

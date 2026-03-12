@@ -1,0 +1,201 @@
+import { app, BrowserWindow, ipcMain, IpcMainInvokeEvent } from 'electron';
+import * as path from 'path';
+import * as db from '../database';
+
+// Ensure Windows uses the correct AppUserModelID
+if (process.platform === 'win32') {
+    try {
+        app.setAppUserModelId('com.workbee.app');
+    } catch {
+        // ignore
+    }
+}
+
+// Environment Setup
+const isDev = !app.isPackaged;
+
+// Determine DB path and set it before initializing database
+// Note: __dirname is available in CommonJS. If this is compiled to ESM, 
+// you might need to define it using import.meta.url.
+let dbPath: string;
+if (isDev) {
+    dbPath = path.join(__dirname, '../workbee_data');
+} else {
+    dbPath = path.join(path.dirname(process.execPath), 'workbee_data');
+}
+process.env.DB_PATH = dbPath;
+
+let mainWindow: BrowserWindow | null = null;
+
+function createWindow() {
+    const windowIcon = path.join(__dirname, '..', process.platform === 'win32' ? 'favicon.ico' : 'logo.png');
+    mainWindow = new BrowserWindow({
+        width: 1280,
+        height: 800,
+        title: "WorkerBee",
+        icon: windowIcon,
+        webPreferences: {
+            nodeIntegration: false,
+            contextIsolation: true,
+            preload: path.join(__dirname, 'preload.ts')
+        },
+        autoHideMenuBar: true
+    });
+
+    if (isDev) {
+        mainWindow.loadURL(`http://localhost:9229`);
+        mainWindow.webContents.openDevTools();
+    } else {
+        mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+    }
+}
+
+// IPC Handlers
+function setupIpcHandlers() {
+    // Categories
+    ipcMain.handle('getCategories', () => db.getCategories());
+    ipcMain.handle('createCategory', (_e: IpcMainInvokeEvent, { parent_id, name, color }: { parent_id: number | null, name: string, color: string | null }) => db.createCategory(parent_id, name, color));
+    ipcMain.handle('updateCategory', (_e: IpcMainInvokeEvent, { id, parent_id, name, color, position }: { id: number, parent_id: number | null, name: string, color: string | null, position?: number | null }) => db.updateCategory(id, parent_id, name, color, position));
+    ipcMain.handle('reorderCategories', (_e: IpcMainInvokeEvent, { parent_id, ordered_ids }: { parent_id: number | null, ordered_ids: (number | string)[] }) => db.reorderCategories(parent_id, ordered_ids));
+    ipcMain.handle('archiveCategory', (_e: IpcMainInvokeEvent, id: number) => db.archiveCategory(id));
+
+    // Label Notes
+    ipcMain.handle('getLabelNotes', (_e: IpcMainInvokeEvent, { categoryId, type }: { categoryId: number, type?: string | null }) => db.getLabelNotes(categoryId, type));
+    ipcMain.handle('getLabelNote', (_e: IpcMainInvokeEvent, id: number) => db.getLabelNote(id));
+    ipcMain.handle('addLabelNote', (_e: IpcMainInvokeEvent, { categoryId, title, content, type }: { categoryId: number, title: string | null, content: string | null, type: string }) => db.addLabelNote(categoryId, title, content, type));
+    ipcMain.handle('updateLabelNote', (_e: IpcMainInvokeEvent, { id, title, content }: { id: number, title: string | null, content: string | null }) => db.updateLabelNote(id, title, content));
+    ipcMain.handle('deleteLabelNote', (_e: IpcMainInvokeEvent, id: number) => db.deleteLabelNote(id));
+    ipcMain.handle('archiveLabelNote', (_e: IpcMainInvokeEvent, id: number) => db.archiveLabelNote(id));
+    ipcMain.handle('unarchiveLabelNote', (_e: IpcMainInvokeEvent, id: number) => db.unarchiveLabelNote(id));
+
+    // Tasks
+    ipcMain.handle('getTasks', (_e: IpcMainInvokeEvent, filters: any = {}) => {
+        const { status, category_id, include_descendants } = filters;
+        if (status) return db.getTasksByStatus(status);
+        if (category_id) {
+            const includeDesc = include_descendants === '1' || include_descendants === true || include_descendants === 'true';
+            return includeDesc ? db.getTasksByCategoryWithDescendants(category_id) : db.getTasksByCategory(category_id);
+        }
+        return db.getAllTasks();
+    });
+    ipcMain.handle('getTask', async (_e: IpcMainInvokeEvent, id: number) => {
+        const task = await db.getTask(id);
+        if (!task) return null;
+        const [todos, logs, notes] = await Promise.all([
+            db.getTaskTodos(id),
+            db.getTaskLogs(id),
+            db.getTaskNotes(id)
+        ]);
+        return { ...task, todos, logs, notes };
+    });
+    ipcMain.handle('createTask', (_e: IpcMainInvokeEvent, { category_id, title, description, url }: { category_id: number | null, title: string, description: string | null, url: string | null }) => db.createTask(category_id, title, description, url));
+    ipcMain.handle('updateTask', (_e: IpcMainInvokeEvent, { id, data }: { id: number, data: any }) => {
+        return db.updateTask(
+            id,
+            data.category_id,
+            data.title,
+            data.description,
+            data.url,
+            data.status,
+            data.story_points,
+            data.priority,
+            data.task_type
+        );
+    });
+    ipcMain.handle('reorderTasks', (_e: IpcMainInvokeEvent, { status, ordered_ids }: { status: string, ordered_ids: (number | string)[] }) => db.reorderTasksInStatus(status, ordered_ids));
+    ipcMain.handle('archiveTask', (_e: IpcMainInvokeEvent, id: number) => db.archiveTask(id));
+    ipcMain.handle('archiveDoneTasks', () => db.archiveDoneTasks());
+    ipcMain.handle('hardDeleteTask', (_e: IpcMainInvokeEvent, id: number) => db.deleteTask(id));
+
+    // Task Sub-resources
+    ipcMain.handle('addTodo', (_e: IpcMainInvokeEvent, { taskId, text }: { taskId: number, text: string }) => db.addTodo(taskId, text));
+    ipcMain.handle('updateTodo', (_e: IpcMainInvokeEvent, { id, text, completed }: { id: number, text: string, completed: boolean | number }) => db.updateTodo(id, text, completed));
+    ipcMain.handle('reorderTodos', (_e: IpcMainInvokeEvent, { taskId, ordered_ids }: { taskId: number, ordered_ids: (number | string)[] }) => db.reorderTodosForTask(taskId, ordered_ids));
+    ipcMain.handle('deleteTodo', (_e: IpcMainInvokeEvent, id: number) => db.deleteTodo(id));
+    ipcMain.handle('addLog', (_e: IpcMainInvokeEvent, { taskId, content }: { taskId: number, content: string | null }) => db.addLog(taskId, content));
+    ipcMain.handle('addNote', (_e: IpcMainInvokeEvent, { taskId, title, content, type }: { taskId: number, title: string | null, content: string | null, type: string }) => db.addNote(taskId, title, content, type));
+    ipcMain.handle('updateNote', (_e: IpcMainInvokeEvent, { id, title, content }: { id: number, title: string | null, content: string | null }) => db.updateNote(id, title, content));
+    ipcMain.handle('deleteNote', (_e: IpcMainInvokeEvent, id: number) => db.deleteNote(id));
+    ipcMain.handle('getTaskNotes', (_e: IpcMainInvokeEvent, taskId: number) => db.getTaskNotes(taskId));
+
+    // Topics
+    ipcMain.handle('getTopics', () => db.getTopics());
+    ipcMain.handle('getTopic', (_e: IpcMainInvokeEvent, id: number) => db.getTopic(id));
+    ipcMain.handle('createTopic', (_e: IpcMainInvokeEvent, topic: any) => db.createTopic(topic.title, topic.description, topic.status, topic.tags));
+    ipcMain.handle('updateTopic', (_e: IpcMainInvokeEvent, { id, topic }: { id: number, topic: any }) => db.updateTopic(id, topic.title, topic.description, topic.status, topic.tags));
+    ipcMain.handle('deleteTopic', (_e: IpcMainInvokeEvent, id: number) => db.deleteTopic(id));
+
+    // Topic Sub-resources
+    ipcMain.handle('getTopicTodos', (_e: IpcMainInvokeEvent, id: number) => db.getTopicTodos(id));
+    ipcMain.handle('addTopicTodo', (_e: IpcMainInvokeEvent, { id, text }: { id: number, text: string }) => db.addTopicTodo(id, text));
+    ipcMain.handle('updateTopicTodo', (_e: IpcMainInvokeEvent, { id, text, completed }: { id: number, text: string, completed: boolean | number }) => db.updateTopicTodo(id, text, completed));
+    ipcMain.handle('deleteTopicTodo', (_e: IpcMainInvokeEvent, id: number) => db.deleteTopicTodo(id));
+    ipcMain.handle('getTopicLogs', (_e: IpcMainInvokeEvent, id: number) => db.getTopicLogs(id));
+    ipcMain.handle('addTopicLog', (_e: IpcMainInvokeEvent, { id, content }: { id: number, content: string | null }) => db.addTopicLog(id, content));
+    ipcMain.handle('getTopicNotes', (_e: IpcMainInvokeEvent, id: number) => db.getTopicNotes(id));
+    ipcMain.handle('addTopicNote', (_e: IpcMainInvokeEvent, { id, title, content, type }: { id: number, title: string | null, content: string | null, type: string }) => db.addTopicNote(id, title, content, type));
+    ipcMain.handle('updateTopicNote', (_e: IpcMainInvokeEvent, { id, title, content }: { id: number, title: string | null, content: string | null }) => db.updateTopicNote(id, title, content));
+    ipcMain.handle('deleteTopicNote', (_e: IpcMainInvokeEvent, id: number) => db.deleteTopicNote(id));
+
+    // Task-Topic Links
+    ipcMain.handle('getTaskTopics', (_e: IpcMainInvokeEvent, taskId: number) => db.getTaskTopics(taskId));
+    ipcMain.handle('setTaskTopics', (_e: IpcMainInvokeEvent, { taskId, topicIds }: { taskId: number, topicIds: (number | string)[] }) => db.setTaskTopics(taskId, topicIds));
+
+    // Search
+    ipcMain.handle('search', (_e: IpcMainInvokeEvent, { q, limit }: { q: string, limit?: number }) => db.search(q, limit));
+
+    // Weekly Status
+    ipcMain.handle('getWeeklyNote', (_e: IpcMainInvokeEvent, date: string) => db.getWeeklyNoteForDate(date));
+    ipcMain.handle('updateWeeklyNote', (_e: IpcMainInvokeEvent, { id, content }: { id: number, content: string }) => db.updateWeeklyNote(id, content));
+
+    // Journal
+    ipcMain.handle('getJournalEntries', () => db.getJournalEntries());
+    ipcMain.handle('getLatestJournalEntry', () => db.getLatestJournalEntry());
+    ipcMain.handle('getJournalEntry', (_e: IpcMainInvokeEvent, date: string) => db.getJournalEntryByDate(date));
+    ipcMain.handle('upsertJournalEntry', (_e: IpcMainInvokeEvent, { date, content }: { date: string, content: string }) => db.upsertJournalEntry(date, content));
+
+    // Reports
+    ipcMain.handle('getReports', (_e: IpcMainInvokeEvent, { startDate, endDate }: { startDate?: string, endDate?: string }) => {
+        const end = endDate || new Date().toISOString().split('T')[0];
+        const start = startDate || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        return db.getLogsByDateRange(start, end);
+    });
+    ipcMain.handle('getReportSummary', async (_e: IpcMainInvokeEvent, { startDate, endDate }: { startDate?: string, endDate?: string }) => {
+        const end = endDate || new Date().toISOString().split('T')[0];
+        const start = startDate || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        const logs = await db.getLogsByDateRange(start, end);
+        const completedTasks = await db.getTasksCompletedByDateRange(start, end);
+        return { startDate: start, endDate: end, logs, completedTasks };
+    });
+    ipcMain.handle('getArchive', async (_e: IpcMainInvokeEvent, { startDate, endDate, weeks }: { startDate?: string, endDate?: string, weeks?: number | string }) => {
+        const end = endDate || new Date().toISOString().split('T')[0];
+        const start = startDate || (weeks
+            ? new Date(Date.now() - Number(weeks) * 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+            : new Date(Date.now() - 4 * 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
+
+        const [tasks, notes] = await Promise.all([
+            db.getArchivedTasksByDateRange(start, end),
+            db.getArchivedLabelNotesByDateRange(start, end),
+        ]);
+        return { startDate: start, endDate: end, tasks, notes };
+    });
+}
+
+app.whenReady().then(async () => {
+    try {
+        await db.init();
+        setupIpcHandlers();
+        createWindow();
+    } catch (err) {
+        console.error('Failed to initialize app:', err);
+        app.quit();
+    }
+
+    app.on('activate', () => {
+        if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    });
+});
+
+app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') app.quit();
+});

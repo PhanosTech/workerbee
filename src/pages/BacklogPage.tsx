@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
-import { api } from '../api';
+import { api, Category, Task, LabelNote } from '../api';
+import { BacklogFocus } from '../App';
 import TaskModal from '../components/TaskModal';
 import TiptapEditor from '../components/TiptapEditor';
 
@@ -19,15 +20,24 @@ const LABEL_COLOR_PRESETS = [
 const STORAGE_DEFAULT_FOLDER_KEY = 'wb-default-folder-id';
 const STORAGE_COLLAPSED_FOLDERS_KEY = 'wb-folders-collapsed';
 
-const BacklogPage = ({ focus, onOpenSearch }) => {
-    const [categories, setCategories] = useState([]);
-    const [categoriesLoaded, setCategoriesLoaded] = useState(false);
-    const [tasks, setTasks] = useState([]);
-    const [notes, setNotes] = useState([]); // Label Notes
+interface CategoryNode extends Category {
+    children: CategoryNode[];
+}
 
-    const [selectedCategoryId, setSelectedCategoryId] = useState(null);
-    const [selectedTask, setSelectedTask] = useState(null);
-    const [activeTab, setActiveTab] = useState('tasks'); // tasks | notes
+interface BacklogPageProps {
+    focus: BacklogFocus | null;
+    onOpenSearch: () => void;
+}
+
+const BacklogPage: React.FC<BacklogPageProps> = ({ focus, onOpenSearch }) => {
+    const [categories, setCategories] = useState<CategoryNode[]>([]);
+    const [categoriesLoaded, setCategoriesLoaded] = useState(false);
+    const [tasks, setTasks] = useState<Task[]>([]);
+    const [notes, setNotes] = useState<LabelNote[]>([]); // Label Notes
+
+    const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
+    const [selectedTask, setSelectedTask] = useState<{ id: number } | null>(null);
+    const [activeTab, setActiveTab] = useState<'tasks' | 'notes'>('tasks'); // tasks | notes
     const [noteTypeFilter, setNoteTypeFilter] = useState('work_notes'); // email, meeting_notes, review_notes, work_notes
     const [includeSubLabels, setIncludeSubLabels] = useState(false);
 
@@ -36,20 +46,20 @@ const BacklogPage = ({ focus, onOpenSearch }) => {
     const [newCatName, setNewCatName] = useState('');
     const [showCreateTask, setShowCreateTask] = useState(false);
     const [newTaskTitle, setNewTaskTitle] = useState('');
-    const [draggingCategory, setDraggingCategory] = useState(null); // { id, parent_id }
-    const [dragOverCategoryId, setDragOverCategoryId] = useState(null);
+    const [draggingCategory, setDraggingCategory] = useState<{ id: number; parent_id: number | null } | null>(null); // { id, parent_id }
+    const [dragOverCategoryId, setDragOverCategoryId] = useState<number | null>(null);
 
-    const createCatInputRef = useRef(null);
-    const createTaskInputRef = useRef(null);
+    const createCatInputRef = useRef<HTMLInputElement>(null);
+    const createTaskInputRef = useRef<HTMLInputElement>(null);
 
-    const [defaultCategoryId, setDefaultCategoryId] = useState(() => {
+    const [defaultCategoryId, setDefaultCategoryId] = useState<number | null>(() => {
         if (typeof window === 'undefined') return null;
         const raw = window.localStorage.getItem(STORAGE_DEFAULT_FOLDER_KEY);
         const parsed = raw ? Number(raw) : null;
-        return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+        return Number.isFinite(parsed) && parsed && parsed > 0 ? parsed : null;
     });
 
-    const [collapsedCategories, setCollapsedCategories] = useState(() => {
+    const [collapsedCategories, setCollapsedCategories] = useState<Set<number>>(() => {
         if (typeof window === 'undefined') return new Set();
         try {
             const raw = window.localStorage.getItem(STORAGE_COLLAPSED_FOLDERS_KEY);
@@ -57,8 +67,8 @@ const BacklogPage = ({ focus, onOpenSearch }) => {
             if (!Array.isArray(ids)) return new Set();
             return new Set(
                 ids
-                    .map((id) => Number(id))
-                    .filter((id) => Number.isFinite(id) && id > 0)
+                    .map((id: any) => Number(id))
+                    .filter((id: number) => Number.isFinite(id) && id > 0)
             );
         } catch {
             return new Set();
@@ -67,11 +77,11 @@ const BacklogPage = ({ focus, onOpenSearch }) => {
 
     // Label Settings
     const [showLabelSettings, setShowLabelSettings] = useState(false);
-    const [labelDraft, setLabelDraft] = useState({ id: null, parent_id: null, name: '', color: '#89b4fa' });
+    const [labelDraft, setLabelDraft] = useState<{ id: number | null; parent_id: number | null; name: string; color: string }>({ id: null, parent_id: null, name: '', color: '#89b4fa' });
 
     // Label Note Modal
     const [showNoteModal, setShowNoteModal] = useState(false);
-    const [activeLabelNote, setActiveLabelNote] = useState(null);
+    const [activeLabelNote, setActiveLabelNote] = useState<LabelNote | null>(null);
     const [noteDraftTitle, setNoteDraftTitle] = useState('');
     const [noteDraftContent, setNoteDraftContent] = useState('');
     const [noteDraftType, setNoteDraftType] = useState(noteTypeFilter);
@@ -125,7 +135,7 @@ const BacklogPage = ({ focus, onOpenSearch }) => {
         setSelectedTask({ id: focus.taskId });
     }, [focus?.nonce]);
 
-    const findCategoryById = (nodes, id) => {
+    const findCategoryById = (nodes: CategoryNode[], id: number | null): CategoryNode | null => {
         if (!id) return null;
         for (const node of nodes) {
             if (node.id === id) return node;
@@ -141,8 +151,8 @@ const BacklogPage = ({ focus, onOpenSearch }) => {
     );
 
     const categoryById = useMemo(() => {
-        const map = new Map();
-        const walk = (nodes) => {
+        const map = new Map<number, CategoryNode>();
+        const walk = (nodes: CategoryNode[]) => {
             nodes.forEach((node) => {
                 map.set(node.id, node);
                 if (node.children?.length) walk(node.children);
@@ -172,9 +182,9 @@ const BacklogPage = ({ focus, onOpenSearch }) => {
         setCategoriesLoaded(true);
     };
 
-    const buildTree = (cats) => {
-        const map = {};
-        const roots = [];
+    const buildTree = (cats: Category[]): CategoryNode[] => {
+        const map: Record<number, CategoryNode> = {};
+        const roots: CategoryNode[] = [];
         cats.forEach(c => map[c.id] = { ...c, children: [] });
         cats.forEach(c => {
             if (c.parent_id && map[c.parent_id]) {
@@ -186,14 +196,14 @@ const BacklogPage = ({ focus, onOpenSearch }) => {
         return roots;
     };
 
-    const loadTasks = async (catId) => {
-        const filters = { category_id: catId };
+    const loadTasks = async (catId: number) => {
+        const filters: any = { category_id: catId };
         if (includeSubLabels) filters.include_descendants = '1';
         const data = await api.getTasks(filters);
         setTasks(data);
     };
 
-    const loadNotes = async (catId, type) => {
+    const loadNotes = async (catId: number, type: string) => {
         const data = await api.getLabelNotes(catId, type);
         setNotes(data);
     };
@@ -203,7 +213,7 @@ const BacklogPage = ({ focus, onOpenSearch }) => {
         setShowCreateCat(true);
     };
 
-    const handleCreateCategory = async (e) => {
+    const handleCreateCategory = async (e: React.FormEvent) => {
         e.preventDefault();
         const parentId = selectedCategoryId || null;
         if (!newCatName.trim()) return;
@@ -213,7 +223,7 @@ const BacklogPage = ({ focus, onOpenSearch }) => {
         loadCategories();
     };
 
-    const handleCreateTask = async (e) => {
+    const handleCreateTask = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!selectedCategory) return;
         await api.createTask(selectedCategory.id, newTaskTitle, '', '');
@@ -222,7 +232,7 @@ const BacklogPage = ({ focus, onOpenSearch }) => {
         loadTasks(selectedCategory.id);
     };
 
-    const handleArchiveCategory = async (id) => {
+    const handleArchiveCategory = async (id: number) => {
         if (confirm('Delete this folder and all its contents?')) {
             await api.archiveCategory(id);
             if (defaultCategoryId === id) {
@@ -234,30 +244,30 @@ const BacklogPage = ({ focus, onOpenSearch }) => {
         }
     };
 
-    const handleArchiveTask = async (e, task) => {
+    const handleArchiveTask = async (e: React.MouseEvent, task: Task) => {
         e.stopPropagation();
         if (!confirm('Archive this task?')) return;
         await api.archiveTask(task.id);
         if (selectedCategory) loadTasks(selectedCategory.id);
     };
 
-    const handleStartTask = async (e, task) => {
+    const handleStartTask = async (e: React.MouseEvent, task: Task) => {
         e.stopPropagation();
         await api.updateTask(task.id, { status: 'STARTED' });
-        loadTasks(selectedCategory.id);
+        if (selectedCategory) loadTasks(selectedCategory.id);
     };
 
     // Note Handlers
-    const htmlToPlainText = (html) =>
+    const htmlToPlainText = (html: string | null) =>
         (html || '')
             .replace(/<[^>]*>/g, ' ')
             .replace(/&nbsp;/gi, ' ')
             .replace(/\s+/g, ' ')
             .trim();
 
-    const hasMeaningfulText = (html) => htmlToPlainText(html).length > 0;
+    const hasMeaningfulText = (html: string | null) => htmlToPlainText(html).length > 0;
 
-    const openLabelNoteModal = (note) => {
+    const openLabelNoteModal = (note: LabelNote | null) => {
         setActiveLabelNote(note || null);
         setNoteDraftTitle(note?.title || '');
         setNoteDraftContent(note?.content || '');
@@ -287,7 +297,7 @@ const BacklogPage = ({ focus, onOpenSearch }) => {
         loadNotes(selectedCategory.id, noteTypeFilter);
     };
 
-    const handleDeleteNote = async (id) => {
+    const handleDeleteNote = async (id: number) => {
         if (!selectedCategory) return;
         if (confirm('Delete this note?')) {
             await api.deleteLabelNote(id);
@@ -296,7 +306,7 @@ const BacklogPage = ({ focus, onOpenSearch }) => {
         }
     };
 
-    const openLabelSettingsFor = (node) => {
+    const openLabelSettingsFor = (node: CategoryNode) => {
         setLabelDraft({
             id: node.id,
             parent_id: node.parent_id ?? null,
@@ -330,7 +340,7 @@ const BacklogPage = ({ focus, onOpenSearch }) => {
         setDefaultCategoryId(labelDraft.id);
     };
 
-    const toggleCategoryCollapsed = (id) => {
+    const toggleCategoryCollapsed = (id: number) => {
         setCollapsedCategories((prev) => {
             const next = new Set(prev);
             if (next.has(id)) next.delete(id);
@@ -339,28 +349,29 @@ const BacklogPage = ({ focus, onOpenSearch }) => {
         });
     };
 
-    const parseDragCategoryId = (e) => {
+    const parseDragCategoryId = (e: React.DragEvent): number | null => {
         const raw = e.dataTransfer?.getData?.('text/plain');
         const id = Number(raw || draggingCategory?.id);
         return Number.isFinite(id) && id > 0 ? id : null;
     };
 
-    const getCategoryParentId = (categoryId) => {
+    const getCategoryParentId = (categoryId: number | null): number | null => {
+        if (categoryId === null) return null;
         const node = categoryById.get(categoryId);
         return node?.parent_id ?? null;
     };
 
-    const wouldCreateCycle = (movingId, newParentId) => {
+    const wouldCreateCycle = (movingId: number, newParentId: number | null): boolean => {
         if (!newParentId) return false;
         let current = categoryById.get(newParentId);
         while (current) {
             if (current.id === movingId) return true;
-            current = current.parent_id ? categoryById.get(current.parent_id) : null;
+            current = current.parent_id ? categoryById.get(current.parent_id) : undefined;
         }
         return false;
     };
 
-    const handleDragStart = (e, node) => {
+    const handleDragStart = (e: React.DragEvent, node: CategoryNode) => {
         setDraggingCategory({ id: node.id, parent_id: node.parent_id ?? null });
         setDragOverCategoryId(null);
         e.dataTransfer.effectAllowed = 'move';
@@ -372,7 +383,7 @@ const BacklogPage = ({ focus, onOpenSearch }) => {
         setDragOverCategoryId(null);
     };
 
-    const handleDropOnSibling = async (e, parentId, targetId, siblings) => {
+    const handleDropOnSibling = async (e: React.DragEvent, parentId: number | null, targetId: number, siblings: CategoryNode[]) => {
         e.preventDefault();
         e.stopPropagation();
         const movingId = parseDragCategoryId(e);
@@ -396,7 +407,7 @@ const BacklogPage = ({ focus, onOpenSearch }) => {
         loadCategories();
     };
 
-    const handleMoveCategory = async (e, newParentId) => {
+    const handleMoveCategory = async (e: React.DragEvent, newParentId: number | null) => {
         e.preventDefault();
         e.stopPropagation();
         const movingId = parseDragCategoryId(e);
@@ -433,7 +444,7 @@ const BacklogPage = ({ focus, onOpenSearch }) => {
         loadCategories();
     };
 
-    const renderTree = (nodes, parentId = null) => (
+    const renderTree = (nodes: CategoryNode[], parentId: number | null = null) => (
         <ul className="cat-tree">
             {nodes.map((node) => (
                 <li key={node.id}>
@@ -753,7 +764,7 @@ const BacklogPage = ({ focus, onOpenSearch }) => {
                 <TaskModal
                     taskId={selectedTask.id}
                     onClose={() => setSelectedTask(null)}
-                    onUpdate={() => loadTasks(selectedCategory.id)}
+                    onUpdate={() => selectedCategory && loadTasks(selectedCategory.id)}
                 />
             )}
 
@@ -783,12 +794,12 @@ const BacklogPage = ({ focus, onOpenSearch }) => {
                             content={noteDraftContent}
                             onChange={setNoteDraftContent}
                             placeholder={
-                                {
+                                ({
                                     work_notes: 'Work notes…',
                                     email: 'Paste an email…',
                                     meeting_notes: 'Meeting notes…',
                                     review_notes: 'Review notes…'
-                                }[noteDraftType || noteTypeFilter] || 'Write notes…'
+                                } as Record<string, string>)[noteDraftType || noteTypeFilter] || 'Write notes…'
                             }
                             onRequestSave={handleSaveNote}
                         />

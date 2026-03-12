@@ -1,19 +1,25 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { api } from '../api';
+import { api, Category, Task } from '../api';
 import TaskModal from '../components/TaskModal';
 
-const LANES = [
+interface Lane {
+    key: string;
+    title: string;
+    help: string;
+}
+
+const LANES: Lane[] = [
     { key: 'STARTED', title: 'Started', help: 'Ready to work on' },
     { key: 'DOING', title: 'Doing', help: 'In progress' },
     { key: 'DONE', title: 'Done', help: 'Completed' },
 ];
 
-const percent = (completed, total) => {
+const percent = (completed: number, total: number): number => {
     if (!total) return 0;
     return Math.round((completed / total) * 100);
 };
 
-const moveBefore = (items, movingId, targetId) => {
+const moveBefore = <T extends { id: number }>(items: T[], movingId: number, targetId: number): T[] => {
     const fromIndex = items.findIndex((t) => t.id === movingId);
     const toIndex = items.findIndex((t) => t.id === targetId);
     if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) return items;
@@ -25,7 +31,7 @@ const moveBefore = (items, movingId, targetId) => {
     return next;
 };
 
-const moveToEnd = (items, movingId) => {
+const moveToEnd = <T extends { id: number }>(items: T[], movingId: number): T[] => {
     const fromIndex = items.findIndex((t) => t.id === movingId);
     if (fromIndex === -1 || fromIndex === items.length - 1) return items;
     const next = items.slice();
@@ -34,7 +40,7 @@ const moveToEnd = (items, movingId) => {
     return next;
 };
 
-const hexToRgb = (hex) => {
+const hexToRgb = (hex: string | null): string | null => {
     const cleaned = String(hex || '').trim();
     const match = cleaned.match(/^#?([0-9a-f]{6})$/i);
     if (!match) return null;
@@ -45,41 +51,51 @@ const hexToRgb = (hex) => {
     return `${r}, ${g}, ${b}`;
 };
 
-const normalizeTaskType = (value) =>
+const normalizeTaskType = (value: string | null): string =>
     String(value || '')
         .trim()
         .toUpperCase()
         .replaceAll(' ', '_');
 
-const TASK_TYPE_META = {
+interface TaskTypeMeta {
+    className: string;
+    icon: string;
+    label: string;
+}
+
+const TASK_TYPE_META: Record<string, TaskTypeMeta> = {
     MEETING: { className: 'task-type-meeting', icon: '📅', label: 'Meeting' },
     FOLLOW_UP: { className: 'task-type-follow-up', icon: '❓', label: 'Follow Up' },
     ISSUE: { className: 'task-type-issue', icon: '🚨', label: 'Issue' },
 };
 
-const getTaskTypeMeta = (value) => TASK_TYPE_META[normalizeTaskType(value)] || null;
+const getTaskTypeMeta = (value: string | null): TaskTypeMeta | null => TASK_TYPE_META[normalizeTaskType(value)] || null;
 
-const ActivePage = ({ onOpenInBacklog }) => {
-    const [tasksByStatus, setTasksByStatus] = useState({ STARTED: [], DOING: [], DONE: [] });
-    const [categories, setCategories] = useState([]);
-    const [selectedTask, setSelectedTask] = useState(null);
-    const [dragTaskId, setDragTaskId] = useState(null);
+interface ActivePageProps {
+    onOpenInBacklog: (task: { id: number; category_id?: number | null }) => void;
+}
+
+const ActivePage: React.FC<ActivePageProps> = ({ onOpenInBacklog }) => {
+    const [tasksByStatus, setTasksByStatus] = useState<Record<string, Task[]>>({ STARTED: [], DOING: [], DONE: [] });
+    const [categories, setCategories] = useState<Category[]>([]);
+    const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+    const [dragTaskId, setDragTaskId] = useState<number | null>(null);
 
     const categoryById = useMemo(() => {
-        const map = new Map();
+        const map = new Map<number, Category>();
         categories.forEach((c) => map.set(c.id, c));
         return map;
     }, [categories]);
 
-    const getCategoryTrail = (categoryId) => {
+    const getCategoryTrail = (categoryId: number | null): Category[] => {
         if (!categoryId) return [];
-        const parts = [];
-        const seen = new Set();
-        let current = categoryById.get(categoryId);
+        const parts: Category[] = [];
+        const seen = new Set<number>();
+        let current: Category | undefined = categoryById.get(categoryId);
         while (current && !seen.has(current.id)) {
             parts.unshift(current);
             seen.add(current.id);
-            current = current.parent_id ? categoryById.get(current.parent_id) : null;
+            current = current.parent_id ? categoryById.get(current.parent_id) : undefined;
         }
         return parts;
     };
@@ -104,19 +120,19 @@ const ActivePage = ({ onOpenInBacklog }) => {
         });
     };
 
-    const findTaskStatus = (taskId) => {
+    const findTaskStatus = (taskId: number): string | null => {
         for (const lane of LANES) {
             if (tasksByStatus[lane.key]?.some((t) => t.id === taskId)) return lane.key;
         }
         return null;
     };
 
-    const parseDragTaskId = (e) => {
+    const parseDragTaskId = (e: React.DragEvent): number | null => {
         const raw = e.dataTransfer.getData('text/plain');
         return Number(raw || dragTaskId);
     };
 
-    const handleDropToLane = async (e, targetStatus) => {
+    const handleDropToLane = async (e: React.DragEvent, targetStatus: string) => {
         e.preventDefault();
         const taskId = parseDragTaskId(e);
         if (!taskId) return;
@@ -152,7 +168,7 @@ const ActivePage = ({ onOpenInBacklog }) => {
         loadBoard();
     };
 
-    const handleDropOnCard = async (e, laneStatus, targetId) => {
+    const handleDropOnCard = async (e: React.DragEvent, laneStatus: string, targetId: number) => {
         e.preventDefault();
         e.stopPropagation();
         const taskId = parseDragTaskId(e);
@@ -197,12 +213,12 @@ const ActivePage = ({ onOpenInBacklog }) => {
         loadBoard();
     };
 
-    const handleOpenInBacklog = (e, task) => {
+    const handleOpenInBacklog = (e: React.MouseEvent, task: Task) => {
         e.stopPropagation();
         if (typeof onOpenInBacklog === 'function') onOpenInBacklog(task);
     };
 
-    const handleArchiveTask = async (e, task) => {
+    const handleArchiveTask = async (e: React.MouseEvent, task: Task) => {
         e.stopPropagation();
         if (!confirm('Archive this task?')) return;
         await api.archiveTask(task.id);
@@ -257,7 +273,7 @@ const ActivePage = ({ onOpenInBacklog }) => {
                                     <div
                                         key={task.id}
                                         className={`kanban-card priority-${String(task.priority || 'NORMAL').toLowerCase()} ${taskType?.className || ''}`}
-                                        style={{ '--label-color': labelColor, '--label-rgb': labelRgb }}
+                                        style={{ '--label-color': labelColor, '--label-rgb': labelRgb } as React.CSSProperties}
                                         draggable
                                         onDragStart={(e) => {
                                             setDragTaskId(task.id);
@@ -295,7 +311,7 @@ const ActivePage = ({ onOpenInBacklog }) => {
                                                         <React.Fragment key={c.id}>
                                                             <span
                                                                 className="kanban-card-label-seg"
-                                                                style={{ '--seg-color': c.color || '#89b4fa' }}
+                                                                style={{ '--seg-color': c.color || '#89b4fa' } as React.CSSProperties}
                                                             >
                                                                 {c.name}
                                                             </span>

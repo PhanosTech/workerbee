@@ -1,0 +1,30 @@
+[
+  {
+    "id": 1,
+    "task_id": 1,
+    "text": "this is",
+    "completed": 0,
+    "position": 0
+  },
+  {
+    "id": 2,
+    "task_id": 1,
+    "text": "weird",
+    "completed": 0,
+    "position": 1
+  },
+  {
+    "id": 3,
+    "task_id": 1,
+    "text": "task2",
+    "completed": 0,
+    "position": 2
+  },
+  {
+    "id": 4,
+    "task_id": 1,
+    "text": "align to left",
+    "completed": 0,
+    "position": 3
+  }
+]

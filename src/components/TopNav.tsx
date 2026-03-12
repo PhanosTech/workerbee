@@ -1,6 +1,13 @@
 import React from 'react';
 
-const TopNav = ({ activeTab, setActiveTab, theme, setTheme }) => {
+interface TopNavProps {
+    activeTab: string;
+    setActiveTab: (tab: string) => void;
+    theme: string;
+    setTheme: (theme: any) => void;
+}
+
+const TopNav: React.FC<TopNavProps> = ({ activeTab, setActiveTab, theme, setTheme }) => {
     return (
         <header className="topbar">
             <div className="topbar-left">
@@ -29,6 +36,13 @@ const TopNav = ({ activeTab, setActiveTab, theme, setTheme }) => {
                     onClick={() => setActiveTab('backlog')}
                 >
                     Backlog
+                </button>
+                <button
+                    type="button"
+                    className={`topbar-tab ${activeTab === 'topics' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('topics')}
+                >
+                    Topics
                 </button>
                 <button
                     type="button"

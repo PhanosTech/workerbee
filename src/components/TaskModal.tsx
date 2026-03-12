@@ -1,10 +1,10 @@
-import React, { useMemo, useState, useEffect, useRef } from 'react';
-import { api } from '../api';
+import React, { useMemo, useState, useEffect, useRef, FormEvent, DragEvent, KeyboardEvent } from 'react';
+import { api, Task, Todo, Log, Note, Category, Topic, LabelNote } from '../api';
 import TiptapEditor from './TiptapEditor';
 
 const COPY_TASK_NOTE_FOLDER_KEY = 'wb-copy-task-note-folder-id';
 
-const moveBefore = (items, movingId, targetId) => {
+const moveBefore = <T extends { id: number | string }>(items: T[], movingId: number | string, targetId: number | string): T[] => {
     const fromIndex = items.findIndex((t) => t.id === movingId);
     const toIndex = items.findIndex((t) => t.id === targetId);
     if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) return items;
@@ -16,7 +16,7 @@ const moveBefore = (items, movingId, targetId) => {
     return next;
 };
 
-const moveToEnd = (items, movingId) => {
+const moveToEnd = <T extends { id: number | string }>(items: T[], movingId: number | string): T[] => {
     const fromIndex = items.findIndex((t) => t.id === movingId);
     if (fromIndex === -1 || fromIndex === items.length - 1) return items;
     const next = items.slice();
@@ -25,33 +25,41 @@ const moveToEnd = (items, movingId) => {
     return next;
 };
 
-const TaskModal = ({ taskId, onClose, onUpdate }) => {
-    const [task, setTask] = useState(null);
+interface TaskModalProps {
+    taskId: number;
+    onClose: () => void;
+    onUpdate: () => void;
+}
+
+const TaskModal: React.FC<TaskModalProps> = ({ taskId, onClose, onUpdate }) => {
+    const [task, setTask] = useState<Task | null>(null);
     const [taskDirty, setTaskDirty] = useState(false);
-    const [todos, setTodos] = useState([]);
-    const [logs, setLogs] = useState([]);
-    const [notes, setNotes] = useState([]);
-    const [labelNotes, setLabelNotes] = useState([]);
-    const [categories, setCategories] = useState([]);
+    const [todos, setTodos] = useState<Todo[]>([]);
+    const [logs, setLogs] = useState<Log[]>([]);
+    const [notes, setNotes] = useState<Note[]>([]);
+    const [labelNotes, setLabelNotes] = useState<LabelNote[]>([]);
+    const [categories, setCategories] = useState<Category[]>([]);
     const [newTodo, setNewTodo] = useState('');
     const [newLog, setNewLog] = useState('');
-    const [editingTodoId, setEditingTodoId] = useState(null);
+    const [editingTodoId, setEditingTodoId] = useState<number | null>(null);
     const [editingTodoText, setEditingTodoText] = useState('');
-    const [dragTodoId, setDragTodoId] = useState(null);
-    const [notesTab, setNotesTab] = useState('task');
+    const [dragTodoId, setDragTodoId] = useState<number | null>(null);
+    const [notesTab, setNotesTab] = useState<'task' | 'label'>('task');
     const [showNoteModal, setShowNoteModal] = useState(false);
-    const [activeNote, setActiveNote] = useState(null);
+    const [activeNote, setActiveNote] = useState<Note | null>(null);
     const [noteTitleDraft, setNoteTitleDraft] = useState('');
     const [noteDraft, setNoteDraft] = useState('');
     const [showLabelNoteModal, setShowLabelNoteModal] = useState(false);
-    const [activeLabelNote, setActiveLabelNote] = useState(null);
+    const [activeLabelNote, setActiveLabelNote] = useState<LabelNote | null>(null);
     const [labelNoteTitleDraft, setLabelNoteTitleDraft] = useState('');
     const [labelNoteDraft, setLabelNoteDraft] = useState('');
     const [copyToFolderOpen, setCopyToFolderOpen] = useState(false);
-    const [copyTargetCategoryId, setCopyTargetCategoryId] = useState(null);
+    const [copyTargetCategoryId, setCopyTargetCategoryId] = useState<number | null>(null);
     const [copyingNote, setCopyingNote] = useState(false);
-    const [copyStatus, setCopyStatus] = useState(null);
+    const [copyStatus, setCopyStatus] = useState<string | null>(null);
     const [copyFoldersLoading, setCopyFoldersLoading] = useState(false);
+    const [allTopics, setAllTopics] = useState<Topic[]>([]);
+    const [taskTopicIds, setTaskTopicIds] = useState<(number | string)[]>([]);
     const taskDirtyRef = useRef(false);
 
     useEffect(() => {
@@ -61,6 +69,9 @@ const TaskModal = ({ taskId, onClose, onUpdate }) => {
     useEffect(() => {
         setTaskDirty(false);
         loadTaskData({ preserveDraft: false });
+        loadAllTopics();
+        loadTaskTopics();
+        loadCategories();
     }, [taskId]);
 
     useEffect(() => {
@@ -72,8 +83,8 @@ const TaskModal = ({ taskId, onClose, onUpdate }) => {
     const loadTaskData = async ({ preserveDraft = true } = {}) => {
         try {
             const data = await api.getTask(taskId);
+            if (!data) return;
             setTask((prev) => {
-                if (!data) return prev;
                 if (preserveDraft && taskDirtyRef.current && prev?.id === data.id) {
                     return { ...data, ...prev };
                 }
@@ -90,12 +101,30 @@ const TaskModal = ({ taskId, onClose, onUpdate }) => {
         }
     };
 
-    const updateTaskDraft = (updates) => {
+    const loadAllTopics = async () => {
+        try {
+            const data = await api.getTopics();
+            setAllTopics(data || []);
+        } catch (err) {
+            console.error(err);
+        }
+    };
+
+    const loadTaskTopics = async () => {
+        try {
+            const data = await api.getTaskTopics(taskId);
+            setTaskTopicIds(data.map(t => t.id));
+        } catch (err) {
+            console.error(err);
+        }
+    };
+
+    const updateTaskDraft = (updates: Partial<Task>) => {
         setTask((prev) => (prev ? { ...prev, ...updates } : prev));
         setTaskDirty(true);
     };
 
-    const loadLabelNotes = async (categoryId) => {
+    const loadLabelNotes = async (categoryId: number) => {
         try {
             const data = await api.getLabelNotes(categoryId);
             setLabelNotes(data || []);
@@ -120,7 +149,7 @@ const TaskModal = ({ taskId, onClose, onUpdate }) => {
 
     const orderedCategoryOptions = useMemo(() => {
         const list = Array.isArray(categories) ? categories : [];
-        const byParent = new Map();
+        const byParent = new Map<number | null, Category[]>();
         list.forEach((cat) => {
             const key = cat.parent_id ?? null;
             const siblings = byParent.get(key) || [];
@@ -128,7 +157,7 @@ const TaskModal = ({ taskId, onClose, onUpdate }) => {
             byParent.set(key, siblings);
         });
 
-        const sortCats = (a, b) => {
+        const sortCats = (a: Category, b: Category) => {
             const ap = Number(a?.position ?? 0);
             const bp = Number(b?.position ?? 0);
             if (ap !== bp) return ap - bp;
@@ -139,8 +168,8 @@ const TaskModal = ({ taskId, onClose, onUpdate }) => {
             byParent.set(key, siblings.slice().sort(sortCats));
         }
 
-        const out = [];
-        const walk = (parentId, depth) => {
+        const out: { id: number, label: string }[] = [];
+        const walk = (parentId: number | null, depth: number) => {
             const siblings = byParent.get(parentId) || [];
             siblings.forEach((cat) => {
                 const prefix = depth > 0 ? '\u00A0\u00A0'.repeat(depth) : '';
@@ -152,11 +181,11 @@ const TaskModal = ({ taskId, onClose, onUpdate }) => {
         return out;
     }, [categories]);
 
-    const readLastCopyFolderId = () => {
+    const readLastCopyFolderId = (): number | null => {
         try {
             const raw = window.localStorage.getItem(COPY_TASK_NOTE_FOLDER_KEY);
             const parsed = raw ? Number(raw) : null;
-            return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+            return parsed && Number.isFinite(parsed) && parsed > 0 ? parsed : null;
         } catch {
             return null;
         }
@@ -167,7 +196,7 @@ const TaskModal = ({ taskId, onClose, onUpdate }) => {
         setCopyToFolderOpen(true);
         const fallback =
             readLastCopyFolderId() ??
-            (Number.isFinite(Number(task?.category_id)) ? Number(task.category_id) : null);
+            (task?.category_id && Number.isFinite(Number(task.category_id)) ? Number(task.category_id) : null);
         setCopyTargetCategoryId((prev) => prev ?? fallback);
         await loadCategories();
     };
@@ -187,33 +216,45 @@ const TaskModal = ({ taskId, onClose, onUpdate }) => {
         setCopyTargetCategoryId(orderedCategoryOptions[0].id);
     }, [copyToFolderOpen, orderedCategoryOptions, copyTargetCategoryId]);
 
-    const handleSaveTask = async (updates = {}) => {
+    const handleSaveTask = async (updates: Partial<Task> = {}) => {
+        if (!task) return;
         const nextTask = { ...task, ...updates };
-        await api.updateTask(task.id, {
-            category_id: nextTask.category_id,
-            title: nextTask.title,
-            description: nextTask.description,
-            url: nextTask.url,
-            status: nextTask.status,
-            story_points: nextTask.story_points,
-            priority: nextTask.priority,
-            task_type: nextTask.task_type,
-            due_date: nextTask.due_date
-        });
+        await Promise.all([
+            api.updateTask(task.id, {
+                category_id: nextTask.category_id,
+                title: nextTask.title,
+                description: nextTask.description,
+                url: nextTask.url,
+                status: nextTask.status,
+                story_points: nextTask.story_points,
+                priority: nextTask.priority,
+                task_type: nextTask.task_type,
+                due_date: nextTask.due_date
+            } as Partial<Task>),
+            api.setTaskTopics(task.id, taskTopicIds)
+        ]);
         setTaskDirty(false);
         onUpdate();
         onClose();
     };
 
-    const handleAddTodo = async (e) => {
+    const handleHardDeleteTask = async () => {
+        if (!task) return;
+        if (!confirm('PERMANENTLY DELETE this task and all its data? This cannot be undone.')) return;
+        await api.hardDeleteTask(task.id);
+        onUpdate();
+        onClose();
+    };
+
+    const handleAddTodo = async (e: FormEvent) => {
         e.preventDefault();
-        if (!newTodo) return;
+        if (!task || !newTodo) return;
         await api.addTodo(task.id, newTodo);
         setNewTodo('');
         loadTaskData();
     };
 
-    const handleToggleTodo = async (todo) => {
+    const handleToggleTodo = async (todo: Todo) => {
         const nextCompleted = !todo.completed;
         setTodos((prev) =>
             prev.map((t) => (t.id === todo.id ? { ...t, completed: nextCompleted ? 1 : 0 } : t))
@@ -221,7 +262,7 @@ const TaskModal = ({ taskId, onClose, onUpdate }) => {
         await api.updateTodo(todo.id, todo.text, nextCompleted);
     };
 
-    const handleStartEditTodo = (todo) => {
+    const handleStartEditTodo = (todo: Todo) => {
         setEditingTodoId(todo.id);
         setEditingTodoText(todo.text || '');
     };
@@ -231,7 +272,7 @@ const TaskModal = ({ taskId, onClose, onUpdate }) => {
         setEditingTodoText('');
     };
 
-    const handleSaveEditTodo = async (todo) => {
+    const handleSaveEditTodo = async (todo: Todo) => {
         const nextText = editingTodoText.trim();
         if (!nextText) return;
         setTodos((prev) => prev.map((t) => (t.id === todo.id ? { ...t, text: nextText } : t)));
@@ -239,55 +280,55 @@ const TaskModal = ({ taskId, onClose, onUpdate }) => {
         handleCancelEditTodo();
     };
 
-    const handleDeleteTodo = async (todo) => {
+    const handleDeleteTodo = async (todo: Todo) => {
         if (!confirm('Delete this todo?')) return;
         setTodos((prev) => prev.filter((t) => t.id !== todo.id));
         await api.deleteTodo(todo.id);
         if (editingTodoId === todo.id) handleCancelEditTodo();
     };
 
-    const parseDragTodoId = (e) => {
+    const parseDragTodoId = (e: DragEvent) => {
         const raw = e.dataTransfer.getData('text/plain');
         return Number(raw || dragTodoId);
     };
 
-    const handleDropTodoOn = async (e, targetId) => {
+    const handleDropTodoOn = async (e: DragEvent, targetId: number) => {
         e.preventDefault();
         e.stopPropagation();
         const todoId = parseDragTodoId(e);
-        if (!todoId || todoId === targetId) return;
+        if (!todoId || todoId === targetId || !task) return;
         const next = moveBefore(todos, todoId, targetId);
         setTodos(next);
         setDragTodoId(null);
         await api.reorderTodos(task.id, next.map((t) => t.id));
     };
 
-    const handleDropTodoToEnd = async (e) => {
+    const handleDropTodoToEnd = async (e: DragEvent) => {
         e.preventDefault();
         const todoId = parseDragTodoId(e);
-        if (!todoId) return;
+        if (!todoId || !task) return;
         const next = moveToEnd(todos, todoId);
         setTodos(next);
         setDragTodoId(null);
         await api.reorderTodos(task.id, next.map((t) => t.id));
     };
 
-    const handleAddLog = async (e) => {
+    const handleAddLog = async (e: FormEvent) => {
         e.preventDefault();
-        if (!newLog) return;
+        if (!task || !newLog) return;
         await api.addLog(task.id, newLog);
         setNewLog('');
         loadTaskData();
     };
 
-    const htmlToPlainText = (html) =>
+    const htmlToPlainText = (html: string | null | undefined) =>
         (html || '')
             .replace(/<[^>]*>/g, ' ')
             .replace(/&nbsp;/gi, ' ')
             .replace(/\s+/g, ' ')
             .trim();
 
-    const escapeHtml = (text) =>
+    const escapeHtml = (text: string) =>
         (text || '')
             .replaceAll('&', '&amp;')
             .replaceAll('<', '&lt;')
@@ -295,16 +336,16 @@ const TaskModal = ({ taskId, onClose, onUpdate }) => {
             .replaceAll('"', '&quot;')
             .replaceAll("'", '&#39;');
 
-    const normalizeNoteContent = (content) => {
+    const normalizeNoteContent = (content: string | null | undefined) => {
         const trimmed = (content || '').trim();
         if (!trimmed) return '';
-        if (trimmed.startsWith('<')) return content;
+        if (trimmed.startsWith('<')) return content || '';
         return `<p>${escapeHtml(trimmed).replaceAll('\n', '<br />')}</p>`;
     };
 
-    const isEmptyHtml = (html) => htmlToPlainText(html).length === 0;
+    const isEmptyHtml = (html: string) => htmlToPlainText(html).length === 0;
 
-    const openNoteModal = (note) => {
+    const openNoteModal = (note: Note | null) => {
         setActiveNote(note || null);
         setNoteTitleDraft(note?.title || '');
         setNoteDraft(normalizeNoteContent(note?.content || ''));
@@ -323,7 +364,7 @@ const TaskModal = ({ taskId, onClose, onUpdate }) => {
     };
 
     const handleSaveNote = async () => {
-        if (isEmptyHtml(noteDraft)) return;
+        if (isEmptyHtml(noteDraft) || !task) return;
 
         if (activeNote?.id) {
             await api.updateNote(activeNote.id, noteTitleDraft, noteDraft);
@@ -372,7 +413,7 @@ const TaskModal = ({ taskId, onClose, onUpdate }) => {
         loadTaskData();
     };
 
-    const openLabelNoteModal = (note) => {
+    const openLabelNoteModal = (note: LabelNote | null) => {
         setActiveLabelNote(note || null);
         setLabelNoteTitleDraft(note?.title || '');
         setLabelNoteDraft(note?.content || '');
@@ -410,6 +451,7 @@ const TaskModal = ({ taskId, onClose, onUpdate }) => {
     };
 
     const handleArchiveTask = async () => {
+        if (!task) return;
         if (!confirm('Archive this task?')) return;
         await api.archiveTask(task.id);
         onUpdate();
@@ -453,11 +495,46 @@ const TaskModal = ({ taskId, onClose, onUpdate }) => {
                 <div className="modal-body task-modal-grid">
                     <div className="task-col task-col-properties">
                         <section>
+                            <label>Folder</label>
+                            <select
+                                value={task.category_id || ''}
+                                onChange={(e) => updateTaskDraft({ category_id: Number(e.target.value) || null })}
+                            >
+                                <option value="">No Folder</option>
+                                {orderedCategoryOptions.map(opt => (
+                                    <option key={opt.id} value={opt.id}>{opt.label}</option>
+                                ))}
+                            </select>
+                        </section>
+                        <section>
                             <label>Description</label>
                             <textarea
                                 value={task.description || ''}
                                 onChange={(e) => updateTaskDraft({ description: e.target.value })}
                             />
+                        </section>
+                        <section>
+                            <label>Topics</label>
+                            <div className="topics-checkboxes" style={{ maxHeight: 150, overflow: 'auto', border: '1px solid var(--border-subtle)', padding: 8, borderRadius: 8, background: 'var(--input-bg)' }}>
+                                {allTopics.map(topic => (
+                                    <label key={topic.id} style={{ display: 'flex', alignItems: 'center', gap: 8, textTransform: 'none', letterSpacing: 'normal', cursor: 'pointer', marginBottom: 4 }}>
+                                        <input
+                                            type="checkbox"
+                                            checked={taskTopicIds.includes(topic.id)}
+                                            onChange={(e) => {
+                                                if (e.target.checked) {
+                                                    setTaskTopicIds([...taskTopicIds, topic.id]);
+                                                } else {
+                                                    setTaskTopicIds(taskTopicIds.filter(id => id !== topic.id));
+                                                }
+                                                setTaskDirty(true);
+                                            }}
+                                        />
+                                        <span style={{ fontSize: '0.85rem' }}>{topic.title}</span>
+                                    </label>
+                                ))}
+                                {allTopics.length === 0 && <div className="muted" style={{ fontSize: '0.8rem' }}>No topics found.</div>}
+                            </div>
                         </section>
                         <section>
                             <label>URL</label>
@@ -573,7 +650,7 @@ const TaskModal = ({ taskId, onClose, onUpdate }) => {
                                                         className="todo-edit-input"
                                                         value={editingTodoText}
                                                         onChange={(e) => setEditingTodoText(e.target.value)}
-                                                        onKeyDown={(e) => {
+                                                        onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
                                                             if (e.key === 'Enter') {
                                                                 e.preventDefault();
                                                                 handleSaveEditTodo(todo);
@@ -757,7 +834,8 @@ const TaskModal = ({ taskId, onClose, onUpdate }) => {
                     <div className="task-modal-actions">
                         <button onClick={() => handleSaveTask({ status: 'BACKLOG' })}>Move to Backlog</button>
                         <button className="danger" onClick={handleArchiveTask}>Archive</button>
-                        <button onClick={handleSaveTask} className="primary-btn">Save & Close</button>
+                        <button className="danger" onClick={handleHardDeleteTask}>Hard Delete</button>
+                        <button onClick={() => handleSaveTask({})} className="primary-btn">Save & Close</button>
                     </div>
                 </div>
             </div>

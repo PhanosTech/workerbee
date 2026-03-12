@@ -1,31 +1,51 @@
 import React, { useEffect, useState } from 'react';
+import { SearchResult } from './api';
 import TopNav from './components/TopNav';
 import ActivePage from './pages/ActivePage';
 import ReportsPage from './pages/ReportsPage';
 import BacklogPage from './pages/BacklogPage';
+import TopicsPage from './pages/TopicsPage';
 import NotesPage from './pages/NotesPage';
 import WeeklyStatusPage from './pages/WeeklyStatusPage';
 import JournalPage from './pages/JournalPage';
 import SearchModal from './components/SearchModal';
 import './styles/main.css';
 
-const VALID_THEMES = new Set(['midnight', 'graphite', 'ocean', 'ember', 'amethyst', 'nord', 'forest', 'light']);
+type Theme = 'midnight' | 'graphite' | 'ocean' | 'ember' | 'amethyst' | 'nord' | 'forest' | 'light';
 
-const getInitialTheme = () => {
+const VALID_THEMES = new Set<string>(['midnight', 'graphite', 'ocean', 'ember', 'amethyst', 'nord', 'forest', 'light']);
+
+const getInitialTheme = (): Theme => {
     if (typeof window === 'undefined') return 'midnight';
     const saved = window.localStorage.getItem('wb-theme');
-    if (saved && VALID_THEMES.has(saved)) return saved;
+    if (saved && VALID_THEMES.has(saved)) return saved as Theme;
     const prefersLight = window.matchMedia?.('(prefers-color-scheme: light)')?.matches;
     return prefersLight ? 'light' : 'midnight';
 };
 
+export interface BacklogFocus {
+    taskId: number;
+    categoryId: number | null;
+    nonce: number;
+}
+
+export interface NotesFocus {
+    noteId: number;
+    nonce: number;
+}
+
+export interface WeeklyFocus {
+    date: string;
+    nonce: number;
+}
+
 function App() {
-    const [activeTab, setActiveTab] = useState('kanban');
-    const [backlogFocus, setBacklogFocus] = useState(null); // { taskId, categoryId, nonce }
-    const [notesFocus, setNotesFocus] = useState(null); // { noteId, nonce }
-    const [weeklyFocus, setWeeklyFocus] = useState(null); // { date, nonce }
-    const [theme, setTheme] = useState(getInitialTheme);
-    const [searchOpen, setSearchOpen] = useState(false);
+    const [activeTab, setActiveTab] = useState<string>('kanban');
+    const [backlogFocus, setBacklogFocus] = useState<BacklogFocus | null>(null);
+    const [notesFocus, setNotesFocus] = useState<NotesFocus | null>(null);
+    const [weeklyFocus, setWeeklyFocus] = useState<WeeklyFocus | null>(null);
+    const [theme, setTheme] = useState<Theme>(getInitialTheme);
+    const [searchOpen, setSearchOpen] = useState<boolean>(false);
 
     useEffect(() => {
         const parseHash = () => {
@@ -45,11 +65,13 @@ function App() {
 
     useEffect(() => {
         document.documentElement.dataset.theme = theme;
-        document.documentElement.style.colorScheme = theme === 'light' ? 'light' : 'dark';
+        if (document.documentElement.style) {
+            document.documentElement.style.colorScheme = theme === 'light' ? 'light' : 'dark';
+        }
         window.localStorage.setItem('wb-theme', theme);
     }, [theme]);
 
-    const openTaskInBacklog = (task) => {
+    const openTaskInBacklog = (task: { id: number; category_id?: number | null }) => {
         if (!task?.id) return;
         setBacklogFocus({
             taskId: task.id,
@@ -61,7 +83,7 @@ function App() {
 
     const openSearch = () => setSearchOpen(true);
 
-    const handleSearchSelect = (result) => {
+    const handleSearchSelect = (result: SearchResult) => {
         if (!result) return;
         if (result.type === 'task') {
             openTaskInBacklog({ id: result.id, category_id: result.category_id ?? null });
@@ -83,6 +105,7 @@ function App() {
             <TopNav activeTab={activeTab} setActiveTab={setActiveTab} theme={theme} setTheme={setTheme} />
             <main className={`content ${activeTab === 'notes' ? 'content-notes' : ''}`} role="main">
                 {activeTab === 'kanban' && <ActivePage onOpenInBacklog={openTaskInBacklog} />}
+                {activeTab === 'topics' && <TopicsPage />}
                 {activeTab === 'weekly' && <WeeklyStatusPage focus={weeklyFocus} />}
                 {activeTab === 'notes' && <NotesPage focus={notesFocus} onOpenSearch={openSearch} />}
                 {activeTab === 'backlog' && <BacklogPage focus={backlogFocus} onOpenSearch={openSearch} />}

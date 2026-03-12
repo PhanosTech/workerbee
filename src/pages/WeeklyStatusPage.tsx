@@ -1,14 +1,15 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { api } from '../api';
+import { api, WeeklyNote } from '../api';
 import TiptapEditor from '../components/TiptapEditor';
+import { WeeklyFocus } from '../App';
 
-const dateOnlyTodayLocal = () => {
+const dateOnlyTodayLocal = (): string => {
     const d = new Date();
     const tz = d.getTimezoneOffset() * 60_000;
     return new Date(d.getTime() - tz).toISOString().split('T')[0];
 };
 
-const addDays = (dateOnly, days) => {
+const addDays = (dateOnly: string, days: number): string => {
     const match = String(dateOnly || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
     if (!match) return dateOnlyTodayLocal();
     const year = Number(match[1]);
@@ -19,17 +20,21 @@ const addDays = (dateOnly, days) => {
     return d.toISOString().split('T')[0];
 };
 
-const weekEndFromStart = (weekStart) => addDays(weekStart, 6);
+const weekEndFromStart = (weekStart: string): string => addDays(weekStart, 6);
 
-export default function WeeklyStatusPage({ focus }) {
-    const [selectedDate, setSelectedDate] = useState(dateOnlyTodayLocal);
-    const [note, setNote] = useState(null); // { id, week_start, content, updated_at }
-    const [content, setContent] = useState('');
-    const [loading, setLoading] = useState(false);
-    const [saving, setSaving] = useState(false);
-    const [dirty, setDirty] = useState(false);
-    const [error, setError] = useState(null);
-    const [lastSavedAt, setLastSavedAt] = useState(null);
+interface WeeklyStatusPageProps {
+    focus: WeeklyFocus | null;
+}
+
+export default function WeeklyStatusPage({ focus }: WeeklyStatusPageProps) {
+    const [selectedDate, setSelectedDate] = useState<string>(dateOnlyTodayLocal);
+    const [note, setNote] = useState<WeeklyNote | null>(null); // { id, week_start, content, updated_at }
+    const [content, setContent] = useState<string>('');
+    const [loading, setLoading] = useState<boolean>(false);
+    const [saving, setSaving] = useState<boolean>(false);
+    const [dirty, setDirty] = useState<boolean>(false);
+    const [error, setError] = useState<string | null>(null);
+    const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
 
     const weekStart = String(note?.week_start || '').trim();
     const weekEnd = useMemo(() => (weekStart ? weekEndFromStart(weekStart) : ''), [weekStart]);
@@ -76,7 +81,8 @@ export default function WeeklyStatusPage({ focus }) {
         setSaving(true);
         setError(null);
         try {
-            const updated = await api.updateWeeklyNote(note.id, content);
+            const result = await api.updateWeeklyNote(note.id, content);
+            const updated = result.note;
             setNote(updated || note);
             setDirty(false);
             setLastSavedAt(updated?.updated_at ? new Date(updated.updated_at) : new Date());
@@ -178,4 +184,3 @@ export default function WeeklyStatusPage({ focus }) {
         </div>
     );
 }
-

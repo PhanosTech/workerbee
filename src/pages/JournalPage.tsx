@@ -1,8 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { api } from '../api';
+import { api, JournalEntry } from '../api';
 import TiptapEditor from '../components/TiptapEditor';
 
-const dateOnly = (value) => {
+type SaveState = 'idle' | 'saving' | 'saved' | 'error';
+
+const dateOnly = (value: any): string => {
     const raw = String(value || '').trim();
     if (!raw) return '';
     if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
@@ -11,9 +13,9 @@ const dateOnly = (value) => {
     return parsed.toISOString().split('T')[0];
 };
 
-const sortByDateDesc = (a, b) => String(b.date || '').localeCompare(String(a.date || ''));
+const sortByDateDesc = (a: JournalEntry, b: JournalEntry) => String(b.date || '').localeCompare(String(a.date || ''));
 
-const mergeEntry = (list, entry) => {
+const mergeEntry = (list: JournalEntry[], entry: JournalEntry) => {
     if (!entry?.date) return list.slice().sort(sortByDateDesc);
     const next = list.filter((item) => item.date !== entry.date);
     next.push(entry);
@@ -21,34 +23,32 @@ const mergeEntry = (list, entry) => {
     return next;
 };
 
-const JournalPage = () => {
-    const [entries, setEntries] = useState([]);
-    const [selectedDate, setSelectedDate] = useState('');
-    const [content, setContent] = useState('');
-    const [dirty, setDirty] = useState(false);
-    const [loading, setLoading] = useState(true);
-    const [saveState, setSaveState] = useState('idle');
-    const [error, setError] = useState(null);
-    const autoSaveRef = useRef(null);
-    const isMountedRef = useRef(true);
-    const selectedDateRef = useRef('');
-    const contentRef = useRef('');
+const JournalPage: React.FC = () => {
+    const [entries, setEntries] = useState<JournalEntry[]>([]);
+    const [selectedDate, setSelectedDate] = useState<string>('');
+    const [content, setContent] = useState<string>('');
+    const [dirty, setDirty] = useState<boolean>(false);
+    const [loading, setLoading] = useState<boolean>(true);
+    const [saveState, setSaveState] = useState<SaveState>('idle');
+    const [error, setError] = useState<string | null>(null);
+    const autoSaveRef = useRef<number | null>(null);
+    const isMountedRef = useRef<boolean>(true);
+    const selectedDateRef = useRef<string>('');
+    const contentRef = useRef<string>('');
 
     const getToday = () => new Date().toISOString().split('T')[0];
     const fallbackDate = () => dateOnly(getToday());
 
-    const withTimeout = (promise, ms = 6000) =>
+    const withTimeout = <T,>(promise: Promise<T>, ms = 6000): Promise<T> =>
         new Promise((resolve, reject) => {
-            const setTimer = typeof window !== 'undefined' ? window.setTimeout : setTimeout;
-            const clearTimer = typeof window !== 'undefined' ? window.clearTimeout : clearTimeout;
-            const timer = setTimer(() => reject(new Error('Request timeout')), ms);
+            const timer = window.setTimeout(() => reject(new Error('Request timeout')), ms);
             promise
                 .then((value) => {
-                    clearTimer(timer);
+                    window.clearTimeout(timer);
                     resolve(value);
                 })
                 .catch((err) => {
-                    clearTimer(timer);
+                    window.clearTimeout(timer);
                     reject(err);
                 });
         });
@@ -61,7 +61,7 @@ const JournalPage = () => {
         contentRef.current = content;
     }, [content]);
 
-    const loadEntry = async (date) => {
+    const loadEntry = async (date: string) => {
         const normalized = dateOnly(date);
         if (!normalized) return;
         try {
@@ -85,7 +85,7 @@ const JournalPage = () => {
         }
     };
 
-    const ensureTodayEntry = async (currentEntries) => {
+    const ensureTodayEntry = async (currentEntries: JournalEntry[]) => {
         const normalizedToday = dateOnly(getToday());
         const existing = currentEntries.find((entry) => entry.date === normalizedToday);
         if (existing) {
@@ -98,10 +98,10 @@ const JournalPage = () => {
 
         const baseContent = currentEntries[0]?.content || '';
         const created = await withTimeout(api.upsertJournalEntry(normalizedToday, baseContent));
-        const next = mergeEntry(currentEntries, created);
+        const next = mergeEntry(currentEntries, created.entry);
         if (!isMountedRef.current) return next;
-        setSelectedDate(created.date);
-        setContent(created.content || '');
+        setSelectedDate(created.entry.date);
+        setContent(created.entry.content || '');
         setDirty(false);
         setSaveState('idle');
         return next;
@@ -116,17 +116,17 @@ const JournalPage = () => {
             let next = list;
             if (!list.length) {
                 const created = await withTimeout(api.upsertJournalEntry(getToday(), ''));
-                if (created?.date) {
-                    next = [created];
+                if (created?.entry?.date) {
+                    next = [created.entry];
                     if (isMountedRef.current) {
-                        setSelectedDate(created.date);
-                        setContent(created.content || '');
+                        setSelectedDate(created.entry.date);
+                        setContent(created.entry.content || '');
                         setDirty(false);
                         setSaveState('idle');
                     }
                 } else {
                     const fallback = fallbackDate();
-                    next = [{ date: fallback, content: '' }];
+                    next = [{ date: fallback, content: '' } as JournalEntry];
                     if (isMountedRef.current) {
                         setSelectedDate(fallback);
                         setContent('');
@@ -142,7 +142,7 @@ const JournalPage = () => {
             console.error(err);
             if (isMountedRef.current) {
                 const fallback = fallbackDate();
-                setEntries([{ date: fallback, content: '' }]);
+                setEntries([{ date: fallback, content: '' } as JournalEntry]);
                 setSelectedDate(fallback);
                 setContent('');
                 setDirty(false);
@@ -154,14 +154,14 @@ const JournalPage = () => {
         }
     };
 
-    const saveNow = async (nextContent = contentRef.current, { silent = false, date } = {}) => {
+    const saveNow = async (nextContent = contentRef.current, { silent = false, date }: { silent?: boolean; date?: string } = {}) => {
         const targetDate = dateOnly(date || selectedDateRef.current);
         if (!targetDate) return;
         try {
             if (isMountedRef.current && !silent) setSaveState('saving');
             const saved = await withTimeout(api.upsertJournalEntry(targetDate, nextContent));
             if (!isMountedRef.current || silent) return;
-            setEntries((prev) => mergeEntry(prev, saved));
+            setEntries((prev) => mergeEntry(prev, saved.entry));
             setDirty(false);
             setSaveState('saved');
         } catch (err) {
@@ -206,7 +206,7 @@ const JournalPage = () => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [dirty, selectedDate, content]);
 
-    const handleSelectDate = async (event) => {
+    const handleSelectDate = async (event: React.ChangeEvent<HTMLSelectElement>) => {
         const nextDate = dateOnly(event.target.value);
         if (!nextDate || nextDate === selectedDate) return;
         flushSave();
@@ -229,9 +229,9 @@ const JournalPage = () => {
             setError(null);
             const created = await withTimeout(api.upsertJournalEntry(normalizedToday, baseContent));
             if (!isMountedRef.current) return;
-            setEntries((prev) => mergeEntry(prev, created));
-            setSelectedDate(created.date);
-            setContent(created.content || '');
+            setEntries((prev) => mergeEntry(prev, created.entry));
+            setSelectedDate(created.entry.date);
+            setContent(created.entry.content || '');
             setDirty(false);
             setSaveState('idle');
         } catch (err) {

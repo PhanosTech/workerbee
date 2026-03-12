@@ -1,6 +1,11 @@
 import React from 'react';
 
-const Sidebar = ({ activeTab, setActiveTab }) => {
+interface SidebarProps {
+    activeTab: string;
+    setActiveTab: (tab: string) => void;
+}
+
+const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => {
     return (
         <nav className="sidebar">
             <div className="logo-container">

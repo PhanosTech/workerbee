@@ -1,0 +1,20 @@
+[
+  {
+    "id": 1,
+    "category_id": 1,
+    "title": "this could work",
+    "description": "",
+    "url": "",
+    "task_type": "NONE",
+    "story_points": 0,
+    "priority": "NORMAL",
+    "status": "STARTED",
+    "board_position": 0,
+    "archived": 0,
+    "archived_at": null,
+    "created_at": "2026-01-27T19:42:33.137Z",
+    "started_at": "2026-01-27T23:45:43.356Z",
+    "doing_at": null,
+    "done_at": null
+  }
+]

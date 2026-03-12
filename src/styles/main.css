@@ -20,11 +20,11 @@
     --panel-bg-3: rgba(0, 0, 0, 0.1);
     --border-subtle: rgba(255, 255, 255, 0.08);
     --border-faint: rgba(255, 255, 255, 0.06);
-    --border-strong: rgba(255, 255, 255, 0.12);
+    --border-strong: rgba(255, 255, 255, 0.2);
     --overlay-bg: rgba(0, 0, 0, 0.7);
     --input-bg: rgba(0, 0, 0, 0.2);
-    --control-bg: rgba(255, 255, 255, 0.06);
-    --control-bg-hover: rgba(255, 255, 255, 0.1);
+    --control-bg: rgba(255, 255, 255, 0.1);
+    --control-bg-hover: rgba(255, 255, 255, 0.15);
 }
 
 :root[data-theme="graphite"] {
@@ -42,11 +42,11 @@
     --panel-bg-3: rgba(0, 0, 0, 0.14);
     --border-subtle: rgba(255, 255, 255, 0.08);
     --border-faint: rgba(255, 255, 255, 0.06);
-    --border-strong: rgba(255, 255, 255, 0.14);
+    --border-strong: rgba(255, 255, 255, 0.2);
     --overlay-bg: rgba(0, 0, 0, 0.72);
     --input-bg: rgba(0, 0, 0, 0.22);
-    --control-bg: rgba(255, 255, 255, 0.06);
-    --control-bg-hover: rgba(255, 255, 255, 0.1);
+    --control-bg: rgba(255, 255, 255, 0.1);
+    --control-bg-hover: rgba(255, 255, 255, 0.15);
 }
 
 :root[data-theme="ocean"] {
@@ -64,11 +64,11 @@
     --panel-bg-3: rgba(0, 0, 0, 0.12);
     --border-subtle: rgba(255, 255, 255, 0.08);
     --border-faint: rgba(255, 255, 255, 0.06);
-    --border-strong: rgba(255, 255, 255, 0.14);
+    --border-strong: rgba(255, 255, 255, 0.2);
     --overlay-bg: rgba(0, 0, 0, 0.72);
     --input-bg: rgba(0, 0, 0, 0.2);
-    --control-bg: rgba(255, 255, 255, 0.06);
-    --control-bg-hover: rgba(255, 255, 255, 0.1);
+    --control-bg: rgba(255, 255, 255, 0.1);
+    --control-bg-hover: rgba(255, 255, 255, 0.15);
 }
 
 :root[data-theme="ember"] {
@@ -86,11 +86,11 @@
     --panel-bg-3: rgba(0, 0, 0, 0.14);
     --border-subtle: rgba(255, 255, 255, 0.08);
     --border-faint: rgba(255, 255, 255, 0.06);
-    --border-strong: rgba(255, 255, 255, 0.14);
+    --border-strong: rgba(255, 255, 255, 0.2);
     --overlay-bg: rgba(0, 0, 0, 0.72);
     --input-bg: rgba(0, 0, 0, 0.22);
-    --control-bg: rgba(255, 255, 255, 0.06);
-    --control-bg-hover: rgba(255, 255, 255, 0.1);
+    --control-bg: rgba(255, 255, 255, 0.1);
+    --control-bg-hover: rgba(255, 255, 255, 0.15);
 }
 
 :root[data-theme="amethyst"] {
@@ -108,11 +108,11 @@
     --panel-bg-3: rgba(0, 0, 0, 0.14);
     --border-subtle: rgba(255, 255, 255, 0.08);
     --border-faint: rgba(255, 255, 255, 0.06);
-    --border-strong: rgba(255, 255, 255, 0.14);
+    --border-strong: rgba(255, 255, 255, 0.2);
     --overlay-bg: rgba(0, 0, 0, 0.72);
     --input-bg: rgba(0, 0, 0, 0.22);
-    --control-bg: rgba(255, 255, 255, 0.06);
-    --control-bg-hover: rgba(255, 255, 255, 0.1);
+    --control-bg: rgba(255, 255, 255, 0.1);
+    --control-bg-hover: rgba(255, 255, 255, 0.15);
 }
 
 :root[data-theme="nord"] {
@@ -130,11 +130,11 @@
     --panel-bg-3: rgba(0, 0, 0, 0.12);
     --border-subtle: rgba(255, 255, 255, 0.08);
     --border-faint: rgba(255, 255, 255, 0.06);
-    --border-strong: rgba(255, 255, 255, 0.14);
+    --border-strong: rgba(255, 255, 255, 0.2);
     --overlay-bg: rgba(0, 0, 0, 0.72);
     --input-bg: rgba(0, 0, 0, 0.2);
-    --control-bg: rgba(255, 255, 255, 0.06);
-    --control-bg-hover: rgba(255, 255, 255, 0.1);
+    --control-bg: rgba(255, 255, 255, 0.1);
+    --control-bg-hover: rgba(255, 255, 255, 0.15);
 }
 
 :root[data-theme="forest"] {
@@ -152,11 +152,11 @@
     --panel-bg-3: rgba(0, 0, 0, 0.12);
     --border-subtle: rgba(255, 255, 255, 0.08);
     --border-faint: rgba(255, 255, 255, 0.06);
-    --border-strong: rgba(255, 255, 255, 0.14);
+    --border-strong: rgba(255, 255, 255, 0.2);
     --overlay-bg: rgba(0, 0, 0, 0.72);
     --input-bg: rgba(0, 0, 0, 0.22);
-    --control-bg: rgba(255, 255, 255, 0.06);
-    --control-bg-hover: rgba(255, 255, 255, 0.1);
+    --control-bg: rgba(255, 255, 255, 0.1);
+    --control-bg-hover: rgba(255, 255, 255, 0.15);
 }
 
 :root[data-theme="light"] {
@@ -175,11 +175,11 @@
     --panel-bg-3: rgba(0, 0, 0, 0.02);
     --border-subtle: rgba(0, 0, 0, 0.12);
     --border-faint: rgba(0, 0, 0, 0.06);
-    --border-strong: rgba(0, 0, 0, 0.16);
+    --border-strong: rgba(0, 0, 0, 0.2);
     --overlay-bg: rgba(0, 0, 0, 0.35);
     --input-bg: rgba(0, 0, 0, 0.03);
-    --control-bg: rgba(0, 0, 0, 0.04);
-    --control-bg-hover: rgba(0, 0, 0, 0.07);
+    --control-bg: rgba(0, 0, 0, 0.1);
+    --control-bg-hover: rgba(0, 0, 0, 0.15);
 }
 
 .app-container {
@@ -198,7 +198,7 @@
     align-items: center;
     gap: 14px;
     background-color: var(--sidebar-bg);
-    padding: 10px 14px;
+    padding: 6px 12px;
     border-bottom: 1px solid var(--border-subtle);
 }
 
@@ -219,6 +219,13 @@
     font-weight: bold;
     color: var(--accent-color);
     margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.topbar-title::before {
+    content: "🐝";
 }
 
 .topbar-nav {
@@ -260,7 +267,7 @@
 .topbar-tab {
     background: transparent;
     border: 1px solid var(--border-strong);
-    padding: 8px 12px;
+    padding: 5px 10px;
     border-radius: 999px;
     margin-right: 0;
     font-weight: 600;
@@ -309,7 +316,7 @@
 
 .modal-content {
     background: var(--card-bg);
-    padding: 16px;
+    padding: 12px;
     border-radius: var(--border-radius);
     width: 80%;
     max-width: 900px;
@@ -685,12 +692,21 @@
 }
 
 section label {
-    display: block;
+    display: flex;
+    align-items: center;
+    gap: 6px;
     color: var(--accent-color);
     margin-bottom: 8px;
-    font-size: 0.9rem;
+    font-size: 0.82rem;
     text-transform: uppercase;
-    letter-spacing: 1px;
+    letter-spacing: 1.2px;
+    font-weight: 700;
+}
+
+section label::before {
+    content: "🏷️";
+    font-size: 0.9rem;
+    filter: saturate(0.8);
 }
 
 input,
@@ -735,24 +751,34 @@ textarea {
     border-radius: 6px;
     font-weight: bold;
     cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+    transition: filter 0.2s, transform 0.1s, box-shadow 0.2s;
 }
 
 .primary-btn:hover {
-    filter: brightness(1.05);
+    filter: brightness(1.1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.primary-btn:active {
+    transform: translateY(1px);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
 }
 
 button {
     background: var(--control-bg);
     color: var(--text-color);
-    border: 1px solid var(--border-subtle);
+    border: 1px solid var(--border-strong);
     padding: 8px 16px;
     border-radius: 6px;
     cursor: pointer;
     margin-right: 10px;
+    transition: background 0.2s, border-color 0.2s;
 }
 
 button:hover {
     background: var(--control-bg-hover);
+    border-color: var(--accent-color);
     filter: none;
 }
 
@@ -1306,7 +1332,7 @@ textarea:focus-visible {
     border-left: 4px solid var(--border-strong);
     border-bottom: 3px solid var(--label-color, rgba(255, 255, 255, 0.12));
     border-radius: 12px;
-    padding: 10px;
+    padding: 8px;
     cursor: grab;
     transition: transform 0.08s ease, background 0.2s;
     box-shadow: 0 10px 22px rgba(0, 0, 0, 0.28), 0 10px 22px rgba(var(--label-rgb, 137, 180, 250), 0.18);
@@ -1582,6 +1608,14 @@ textarea:focus-visible {
 
 .sidebar-header h3 {
     margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.sidebar-header h3::before {
+    content: "📁";
+    font-size: 1.1rem;
 }
 
 .cat-tree {

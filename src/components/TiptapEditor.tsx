@@ -12,7 +12,7 @@ const DEFAULT_IMAGE_WIDTH_PX = 720;
 const MAX_IMAGE_DIMENSION_PX = 1600;
 const IMAGE_QUALITY = 0.85;
 
-const normalizeWidth = (value) => {
+const normalizeWidth = (value: string | number | null | undefined): string | null => {
     const raw = String(value ?? '').trim();
     if (!raw) return null;
     if (/^\d+$/.test(raw)) return `${raw}px`;
@@ -21,7 +21,7 @@ const normalizeWidth = (value) => {
     return null;
 };
 
-const blobToDataUrl = (blob) =>
+const blobToDataUrl = (blob: Blob): Promise<string> =>
     new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(String(reader.result));
@@ -29,7 +29,7 @@ const blobToDataUrl = (blob) =>
         reader.readAsDataURL(blob);
     });
 
-const loadImageBitmap = async (file) => {
+const loadImageBitmap = async (file: File): Promise<ImageBitmap | HTMLCanvasElement> => {
     if (typeof createImageBitmap === 'function') {
         return createImageBitmap(file);
     }
@@ -46,14 +46,16 @@ const loadImageBitmap = async (file) => {
         canvas.width = img.naturalWidth || img.width;
         canvas.height = img.naturalHeight || img.height;
         const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0);
+        if (ctx) {
+            ctx.drawImage(img, 0, 0);
+        }
         return canvas;
     } finally {
         URL.revokeObjectURL(url);
     }
 };
 
-const downscaleImageFile = async (file, { maxDimPx, quality }) => {
+const downscaleImageFile = async (file: File, { maxDimPx, quality }: { maxDimPx: number, quality: number }): Promise<{ blob: Blob, width: number, height: number }> => {
     const bitmapOrCanvas = await loadImageBitmap(file);
     const sourceWidth = bitmapOrCanvas.width;
     const sourceHeight = bitmapOrCanvas.height;
@@ -65,11 +67,13 @@ const downscaleImageFile = async (file, { maxDimPx, quality }) => {
     canvas.width = targetWidth;
     canvas.height = targetHeight;
     const ctx = canvas.getContext('2d');
-    ctx.drawImage(bitmapOrCanvas, 0, 0, targetWidth, targetHeight);
+    if (ctx) {
+        ctx.drawImage(bitmapOrCanvas, 0, 0, targetWidth, targetHeight);
+    }
 
     const canWebp = canvas.toDataURL('image/webp').startsWith('data:image/webp');
     const type = canWebp ? 'image/webp' : 'image/png';
-    const blob = await new Promise((resolve) => canvas.toBlob(resolve, type, quality));
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, type, quality));
     if (!blob) throw new Error('Failed to encode image');
     return { blob, width: targetWidth, height: targetHeight };
 };
@@ -94,7 +98,15 @@ const ImageWithWidth = Image.extend({
     },
 });
 
-const TiptapEditor = ({
+interface TiptapEditorProps {
+    content: string;
+    onChange?: (html: string) => void;
+    onRequestSave?: () => void;
+    placeholder?: string;
+    editable?: boolean;
+}
+
+const TiptapEditor: React.FC<TiptapEditorProps> = ({
     content,
     onChange,
     onRequestSave,
@@ -182,7 +194,7 @@ const TiptapEditor = ({
                         editor
                             ?.chain()
                             .focus()
-                            .setImage({ src, width: `${displayWidth}px` })
+                            .setImage({ src, width: `${displayWidth}px` } as any)
                             .run();
                     } catch (err) {
                         console.error(err);
@@ -208,7 +220,7 @@ const TiptapEditor = ({
                         editor
                             ?.chain()
                             .focus()
-                            .setImage({ src, width: `${displayWidth}px` })
+                            .setImage({ src, width: `${displayWidth}px` } as any)
                             .run();
                     } catch (err) {
                         console.error(err);
@@ -218,7 +230,9 @@ const TiptapEditor = ({
             },
         },
         onUpdate: ({ editor }) => {
-            onChange?.(editor.getHTML());
+            if (onChange) {
+                onChange(editor.getHTML());
+            }
         },
     });
 
@@ -226,7 +240,7 @@ const TiptapEditor = ({
         if (!editor) return;
         const next = content || '';
         if (next === editor.getHTML()) return;
-        editor.commands.setContent(next, false);
+        editor.commands.setContent(next, { emitUpdate: false });
     }, [editor, content]);
 
     if (!editor) {

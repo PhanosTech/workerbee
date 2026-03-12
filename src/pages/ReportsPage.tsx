@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { api } from '../api';
+import { api, ReportLog, Task } from '../api';
 
-const ReportsPage = () => {
+const ReportsPage: React.FC = () => {
     // Data States
-    const [logs, setLogs] = useState([]);
-    const [completedTasks, setCompletedTasks] = useState([]);
-    const [activeTasks, setActiveTasks] = useState([]);
+    const [logs, setLogs] = useState<ReportLog[]>([]);
+    const [completedTasks, setCompletedTasks] = useState<Task[]>([]);
+    const [activeTasks, setActiveTasks] = useState<Task[]>([]);
 
     // Filter States
     const [startDate, setStartDate] = useState(
@@ -16,9 +16,9 @@ const ReportsPage = () => {
     );
 
     // UI States
-    const [activeTab, setActiveTab] = useState('worklog'); // worklog, completed, remaining
+    const [activeTab, setActiveTab] = useState<'worklog' | 'completed' | 'remaining'>('worklog');
     const [showExportModal, setShowExportModal] = useState(false);
-    const [exportFormat, setExportFormat] = useState('html'); // html, markdown
+    const [exportFormat, setExportFormat] = useState<'html' | 'markdown'>('html');
 
     useEffect(() => {
         loadReportData();
@@ -31,9 +31,6 @@ const ReportsPage = () => {
             setCompletedTasks(data.completedTasks || []);
 
             // We need to fetch active tasks separately or modify getReportSummary.
-            // For now, let's fetch all tasks and filter client side for remaining work, 
-            // OR ideally add an endpoint. 
-            // Given existing API, `api.getTasks()` gets all non-archived.
             const allTasks = await api.getTasks();
             const remaining = allTasks.filter(t => t.status !== 'DONE' && !t.archived);
             setActiveTasks(remaining);
@@ -43,9 +40,6 @@ const ReportsPage = () => {
     };
 
     const getExportContent = () => {
-        // Generate content based on ALL data available (or just active tab? usually reports export everything)
-        // User requested "export of these reports", let's export ALL based on current date range + remaining work.
-
         if (exportFormat === 'markdown') {
             return generateMarkdown();
         } else {
@@ -77,15 +71,17 @@ const ReportsPage = () => {
         // Work Log
         text += `## Work Logs\n`;
         if (logs.length === 0) text += "_No logs in this period._\n";
-        // Group by Date for markdown? Or Task? Let's do Task
-        const grouped = {};
+        
+        const grouped: Record<string, ReportLog[]> = {};
         logs.forEach(l => {
-            if (!grouped[l.task_title]) grouped[l.task_title] = [];
-            grouped[l.task_title].push(l);
+            const title = l.task_title || l.topic_title || 'Untitled';
+            if (!grouped[title]) grouped[title] = [];
+            grouped[title].push(l);
         });
 
         for (const [title, entries] of Object.entries(grouped)) {
-            text += `### ${title}\n`;
+            const isTopic = entries[0].topic_title ? ' (Follow-up)' : '';
+            text += `### ${title}${isTopic}\n`;
             entries.forEach(e => {
                 text += `- ${new Date(e.timestamp).toLocaleDateString()}: ${e.content}\n`;
             });
@@ -139,15 +135,17 @@ const ReportsPage = () => {
         // Work Logs
         html += `<h3>Work Logs</h3>`;
         if (logs.length > 0) {
-            const grouped = {};
+            const grouped: Record<string, ReportLog[]> = {};
             logs.forEach(l => {
-                if (!grouped[l.task_title]) grouped[l.task_title] = [];
-                grouped[l.task_title].push(l);
+                const title = l.task_title || l.topic_title || 'Untitled';
+                if (!grouped[title]) grouped[title] = [];
+                grouped[title].push(l);
             });
 
             html += `<ul>`;
             for (const [title, entries] of Object.entries(grouped)) {
-                html += `<li><strong>${title}</strong>
+                const isTopic = entries[0].topic_title ? ' <small style="color: #666;">(Follow-up)</small>' : '';
+                html += `<li><strong>${title}</strong>${isTopic}
                     <ul>`;
                 entries.forEach(e => {
                     html += `<li>${new Date(e.timestamp).toLocaleDateString()}: ${e.content}</li>`;
@@ -163,7 +161,8 @@ const ReportsPage = () => {
     };
 
     const handleCopy = () => {
-        navigator.clipboard.writeText(getExportContent());
+        const content = getExportContent();
+        navigator.clipboard.writeText(content);
         alert("Copied to clipboard!");
         setShowExportModal(false);
     };
@@ -219,8 +218,9 @@ const ReportsPage = () => {
                                 <div key={log.id} className="report-item">
                                     <div className="report-meta">
                                         <span className="date">{new Date(log.timestamp).toLocaleString()}</span>
-                                        <span className="task-ref">{log.task_title}</span>
+                                        <span className="task-ref">{log.task_title || log.topic_title}</span>
                                         {log.category_name && <span className="cat-badge">{log.category_name}</span>}
+                                        {log.topic_title && <span className="cat-badge" style={{ background: 'var(--accent-color)', color: '#fff' }}>Follow-up</span>}
                                     </div>
                                     <div className="report-content">
                                         {log.content}

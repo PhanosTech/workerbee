@@ -1,27 +1,33 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { api } from '../api';
+import { api, SearchResult } from '../api';
 
-const iconForType = (type) => {
+interface SearchModalProps {
+    open: boolean;
+    onClose: () => void;
+    onSelect: (result: SearchResult) => void;
+}
+
+const iconForType = (type: string) => {
     if (type === 'task') return '✅';
     if (type === 'note') return '📝';
     if (type === 'weekly') return '📅';
     return '🔎';
 };
 
-const labelForType = (type) => {
+const labelForType = (type: string) => {
     if (type === 'task') return 'Task';
     if (type === 'note') return 'Note';
     if (type === 'weekly') return 'Weekly';
     return 'Result';
 };
 
-export default function SearchModal({ open, onClose, onSelect }) {
-    const inputRef = useRef(null);
+const SearchModal: React.FC<SearchModalProps> = ({ open, onClose, onSelect }) => {
+    const inputRef = useRef<HTMLInputElement>(null);
     const [query, setQuery] = useState('');
-    const [results, setResults] = useState([]);
+    const [results, setResults] = useState<SearchResult[]>([]);
     const [activeIndex, setActiveIndex] = useState(0);
     const [loading, setLoading] = useState(false);
-    const [error, setError] = useState(null);
+    const [error, setError] = useState<string | null>(null);
 
     const trimmed = query.trim();
 
@@ -72,7 +78,7 @@ export default function SearchModal({ open, onClose, onSelect }) {
 
     const selectable = useMemo(() => (Array.isArray(results) ? results : []), [results]);
 
-    const clampIndex = (value) => {
+    const clampIndex = (value: number) => {
         if (!selectable.length) return 0;
         return Math.max(0, Math.min(selectable.length - 1, value));
     };
@@ -192,3 +198,4 @@ export default function SearchModal({ open, onClose, onSelect }) {
     );
 }
 
+export default SearchModal;

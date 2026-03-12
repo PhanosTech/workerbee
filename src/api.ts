@@ -1,0 +1,292 @@
+export interface Category {
+    id: number;
+    parent_id: number | null;
+    name: string;
+    color: string | null;
+    position: number;
+    archived: number;
+    task_count?: number;
+    task_count_total?: number;
+}
+
+export interface Task {
+    id: number;
+    category_id: number | null;
+    title: string;
+    description: string | null;
+    url: string | null;
+    task_type: string;
+    story_points: number;
+    priority: string;
+    status: string;
+    board_position: number;
+    archived: number;
+    archived_at: string | null;
+    created_at: string;
+    started_at: string | null;
+    doing_at: string | null;
+    done_at: string | null;
+    due_date?: string | null;
+    updated_at?: string;
+    todo_total?: number;
+    todo_completed?: number;
+    category_name?: string | null;
+    category_color?: string | null;
+    // Detailed view fields
+    todos?: Todo[];
+    logs?: Log[];
+    notes?: Note[];
+}
+
+export interface Todo {
+    id: number;
+    task_id: number;
+    text: string;
+    completed: number;
+    position: number;
+}
+
+export interface Log {
+    id: number;
+    task_id: number;
+    content: string | null;
+    timestamp: string;
+    task_title?: string | null;
+    category_name?: string | null;
+}
+
+export interface ReportLog extends Log {
+    topic_id?: number;
+    topic_title?: string | null;
+}
+
+export interface Note {
+    id: number;
+    task_id: number;
+    title: string | null;
+    content: string | null;
+    type: string;
+}
+
+export interface LabelNote {
+    id: number;
+    category_id: number;
+    title: string | null;
+    content: string | null;
+    type: string;
+    created_at: string;
+    updated_at: string;
+    archived: number;
+    archived_at: string | null;
+    category_name?: string | null;
+    category_color?: string | null;
+}
+
+export interface WeeklyNote {
+    id: number;
+    week_start: string;
+    content: string;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface JournalEntry {
+    id: number;
+    date: string;
+    content: string;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface Topic {
+    id: number;
+    title: string;
+    description: string;
+    status: string;
+    tags: string;
+    archived: number;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface TopicTodo {
+    id: number;
+    topic_id: number;
+    text: string;
+    completed: number;
+    created_at: string;
+}
+
+export interface TopicLog {
+    id: number;
+    topic_id: number;
+    content: string | null;
+    timestamp: string;
+    topic_title?: string | null;
+}
+
+export interface TopicNote {
+    id: number;
+    topic_id: number;
+    title: string | null;
+    content: string | null;
+    type: string;
+    created_at: string;
+    updated_at?: string;
+}
+
+export interface SearchResult {
+    type: 'task' | 'note' | 'weekly';
+    id: number;
+    title: string;
+    status?: string | null;
+    category_id?: number | null;
+    week_start?: string | null;
+    updated_at: string | null;
+    snippet: string;
+}
+
+export interface ReportSummary {
+    startDate: string;
+    endDate: string;
+    logs: ReportLog[];
+    completedTasks: Task[];
+}
+
+export interface ArchiveData {
+    startDate: string;
+    endDate: string;
+    tasks: Task[];
+    notes: LabelNote[];
+}
+
+export interface ChangesResponse {
+    changes: number;
+    lastInsertRowid?: number;
+}
+
+export interface TaskFilters {
+    status?: string;
+    category_id?: number;
+    include_descendants?: boolean | string;
+}
+
+declare global {
+    interface Window {
+        electronAPI: {
+            invoke: (channel: string, data?: any) => Promise<any>;
+        };
+    }
+}
+
+const isElectron = typeof window !== 'undefined' && !!window.electronAPI;
+
+const invoke = async <T>(channel: string, data?: any): Promise<T> => {
+    if (isElectron) {
+        return window.electronAPI.invoke(channel, data);
+    }
+    console.error('Electron IPC not available for:', channel);
+    throw new Error('Electron IPC not available');
+};
+
+export const api = {
+    // Categories
+    getCategories: (): Promise<Category[]> => invoke('getCategories'),
+    createCategory: (parent_id: number | null, name: string, color: string | null): Promise<ChangesResponse> => 
+        invoke('createCategory', { parent_id, name, color }),
+    updateCategory: (id: number, parent_id: number | null, name: string, color: string | null, position?: number | null): Promise<ChangesResponse> => 
+        invoke('updateCategory', { id, parent_id, name, color, position }),
+    reorderCategories: (parent_id: number | null, ordered_ids: (number | string)[]): Promise<{ ok: boolean }> => 
+        invoke('reorderCategories', { parent_id, ordered_ids }),
+    archiveCategory: (id: number): Promise<{ ok: boolean }> => invoke('archiveCategory', id),
+
+    // Tasks
+    getTasks: (filters: TaskFilters = {}): Promise<Task[]> => invoke('getTasks', filters),
+    getTask: (id: number): Promise<Task | null> => invoke('getTask', id),
+    createTask: (category_id: number | null, title: string, description: string | null, url: string | null): Promise<ChangesResponse> => 
+        invoke('createTask', { category_id, title, description, url }),
+    updateTask: (id: number, data: Partial<Task>): Promise<ChangesResponse> => invoke('updateTask', { id, data }),
+    archiveTask: (id: number): Promise<ChangesResponse> => invoke('archiveTask', id),
+    archiveDoneTasks: (): Promise<ChangesResponse> => invoke('archiveDoneTasks'),
+    reorderTasks: (status: string, ordered_ids: (number | string)[]): Promise<{ ok: boolean }> => 
+        invoke('reorderTasks', { status, ordered_ids }),
+
+    // Todo, Log, Note
+    addTodo: (taskId: number, text: string): Promise<ChangesResponse> => invoke('addTodo', { taskId, text }),
+    updateTodo: (id: number, text: string, completed: boolean | number): Promise<ChangesResponse> => 
+        invoke('updateTodo', { id, text, completed }),
+    reorderTodos: (taskId: number, ordered_ids: (number | string)[]): Promise<{ ok: boolean }> => 
+        invoke('reorderTodos', { taskId, ordered_ids }),
+    deleteTodo: (id: number): Promise<ChangesResponse> => invoke('deleteTodo', id),
+    addLog: (taskId: number, content: string | null): Promise<ChangesResponse> => invoke('addLog', { taskId, content }),
+    addNote: (taskId: number, title: string | null, content: string | null, type: string): Promise<ChangesResponse> => 
+        invoke('addNote', { taskId, title, content, type }),
+    updateNote: (id: number, title: string | null, content: string | null): Promise<ChangesResponse> => 
+        invoke('updateNote', { id, title, content }),
+    deleteNote: (id: number): Promise<ChangesResponse> => invoke('deleteNote', id),
+    getTaskNotes: (taskId: number): Promise<Note[]> => invoke('getTaskNotes', taskId),
+
+    // Reports
+    getReports: (startDate: string, endDate: string): Promise<ReportLog[]> => invoke('getReports', { startDate, endDate }),
+    getReportSummary: (startDate: string, endDate: string): Promise<ReportSummary> => 
+        invoke('getReportSummary', { startDate, endDate }),
+    getArchive: (startDate: string, endDate: string, weeks?: number | string): Promise<ArchiveData> => 
+        invoke('getArchive', { startDate, endDate, weeks }),
+
+    // Label Notes
+    getLabelNotes: (categoryId: number, type?: string | null): Promise<LabelNote[]> => 
+        invoke('getLabelNotes', { categoryId, type }),
+    addLabelNote: (categoryId: number, title: string | null, content: string | null, type: string): Promise<ChangesResponse> => 
+        invoke('addLabelNote', { categoryId, title, content, type }),
+    updateLabelNote: (id: number, title: string | null, content: string | null): Promise<ChangesResponse> => 
+        invoke('updateLabelNote', { id, title, content }),
+    deleteLabelNote: (id: number): Promise<ChangesResponse> => invoke('deleteLabelNote', id),
+    getLabelNote: (id: number): Promise<LabelNote | null> => invoke('getLabelNote', id),
+    archiveLabelNote: (id: number): Promise<ChangesResponse> => invoke('archiveLabelNote', id),
+    unarchiveLabelNote: (id: number): Promise<ChangesResponse> => invoke('unarchiveLabelNote', id),
+
+    // Search
+    search: (q: string, limit?: number): Promise<SearchResult[]> => invoke('search', { q, limit }),
+
+    // Weekly status notes
+    getWeeklyNote: (date: string): Promise<WeeklyNote> => invoke('getWeeklyNote', date),
+    updateWeeklyNote: (id: number, content: string): Promise<{ changes: number, note: WeeklyNote }> => 
+        invoke('updateWeeklyNote', { id, content }),
+
+    // Journal
+    getJournalEntries: (): Promise<JournalEntry[]> => invoke('getJournalEntries'),
+    getLatestJournalEntry: (): Promise<JournalEntry | null> => invoke('getLatestJournalEntry'),
+    getJournalEntry: (date: string): Promise<JournalEntry | null> => invoke('getJournalEntry', date),
+    upsertJournalEntry: (date: string, content: string): Promise<{ changes: number, entry: JournalEntry }> => 
+        invoke('upsertJournalEntry', { date, content }),
+
+    // Topics
+    getTopics: (): Promise<Topic[]> => invoke('getTopics'),
+    getTopic: (id: number): Promise<Topic | null> => invoke('getTopic', id),
+    createTopic: (topic: Partial<Topic>): Promise<ChangesResponse> => invoke('createTopic', topic),
+    updateTopic: (id: number, topic: Partial<Topic>): Promise<ChangesResponse> => invoke('updateTopic', { id, topic }),
+    deleteTopic: (id: number): Promise<ChangesResponse> => invoke('deleteTopic', id),
+
+    // Topic sub-resources
+    getTopicTodos: (id: number): Promise<TopicTodo[]> => invoke('getTopicTodos', id),
+    addTopicTodo: (id: number, text: string): Promise<ChangesResponse> => invoke('addTopicTodo', { id, text }),
+    updateTopicTodo: (id: number, text: string, completed: boolean | number): Promise<ChangesResponse> => 
+        invoke('updateTopicTodo', { id, text, completed }),
+    deleteTopicTodo: (id: number): Promise<ChangesResponse> => invoke('deleteTopicTodo', id),
+    getTopicLogs: (id: number): Promise<TopicLog[]> => invoke('getTopicLogs', id),
+    addTopicLog: (id: number, content: string | null): Promise<ChangesResponse> => invoke('addTopicLog', { id, content }),
+    getTopicNotes: (id: number): Promise<TopicNote[]> => invoke('getTopicNotes', id),
+    addTopicNote: (id: number, title: string | null, content: string | null, type: string): Promise<ChangesResponse> => 
+        invoke('addTopicNote', { id, title, content, type }),
+    updateTopicNote: (id: number, title: string | null, content: string | null): Promise<ChangesResponse> => 
+        invoke('updateTopicNote', { id, title, content }),
+    deleteTopicNote: (id: number): Promise<ChangesResponse> => invoke('deleteTopicNote', id),
+
+    // Task-Topic links
+    getTaskTopics: (taskId: number): Promise<Topic[]> => invoke('getTaskTopics', taskId),
+    setTaskTopics: (taskId: number, topicIds: (number | string)[]): Promise<{ ok: boolean }> => 
+        invoke('setTaskTopics', { taskId, topicIds }),
+
+    // Hard delete task
+    hardDeleteTask: (id: number): Promise<{ ok: boolean }> => invoke('hardDeleteTask', id)
+};

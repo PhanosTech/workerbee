@@ -1,0 +1,13 @@
+[
+  {
+    "id": 1,
+    "category_id": 1,
+    "title": "oh my",
+    "content": "<p>so this does work</p><ul data-type=\"taskList\"><li data-checked=\"false\" data-type=\"taskItem\"><label><input type=\"checkbox\"><span></span></label><div><p>check item 1</p></div></li><li data-checked=\"true\" data-type=\"taskItem\"><label><input type=\"checkbox\" checked=\"checked\"><span></span></label><div><p>check item 2</p></div></li><li data-checked=\"false\" data-type=\"taskItem\"><label><input type=\"checkbox\"><span></span></label><div><p>check item 3</p></div></li></ul><p></p><ul data-type=\"taskList\"><li data-checked=\"true\" data-type=\"taskItem\"><label><input type=\"checkbox\" checked=\"checked\"><span></span></label><div><p>oh this works no</p></div></li><li data-checked=\"true\" data-type=\"taskItem\"><label><input type=\"checkbox\" checked=\"checked\"><span></span></label><div><p>great</p></div></li><li data-checked=\"false\" data-type=\"taskItem\"><label><input type=\"checkbox\"><span></span></label><div><p></p></div></li></ul><p></p>",
+    "type": "work_notes",
+    "created_at": "2026-01-27T19:42:42.379Z",
+    "updated_at": "2026-01-27T20:39:02.710Z",
+    "archived": 0,
+    "archived_at": null
+  }
+]
