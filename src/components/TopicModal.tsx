@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { api, Topic, TopicTodo, TopicLog, TopicNote } from '../api';
+import { api, Topic, TopicLog, TopicNote } from '../api';
 import TiptapEditor from './TiptapEditor';
 
 interface TopicModalProps {
@@ -10,11 +10,9 @@ interface TopicModalProps {
 
 const TopicModal: React.FC<TopicModalProps> = ({ topicId, onClose, onUpdate }) => {
     const [topic, setTopic] = useState<Partial<Topic> | null>(null);
-    const [activeTab, setActiveTab] = useState<'details' | 'todos' | 'logs' | 'notes'>('details');
-    const [todos, setTodos] = useState<TopicTodo[]>([]);
+    const [activeTab, setActiveTab] = useState<'details' | 'logs' | 'notes'>('details');
     const [logs, setLogs] = useState<TopicLog[]>([]);
     const [notes, setNotes] = useState<TopicNote[]>([]);
-    const [newTodo, setNewTodo] = useState('');
     const [newLog, setNewLog] = useState('');
     const [showNoteModal, setShowNoteModal] = useState(false);
     const [activeNote, setActiveNote] = useState<TopicNote | null>(null);
@@ -39,12 +37,10 @@ const TopicModal: React.FC<TopicModalProps> = ({ topicId, onClose, onUpdate }) =
         try {
             const data = await api.getTopic(topicId);
             setTopic(data);
-            const [t, l, n] = await Promise.all([
-                api.getTopicTodos(topicId),
+            const [l, n] = await Promise.all([
                 api.getTopicLogs(topicId),
                 api.getTopicNotes(topicId)
             ]);
-            setTodos(t || []);
             setLogs(l || []);
             setNotes(n || []);
         } catch (err) {
@@ -73,31 +69,6 @@ const TopicModal: React.FC<TopicModalProps> = ({ topicId, onClose, onUpdate }) =
         await api.deleteTopic(topic.id);
         onUpdate();
         onClose();
-    };
-
-    const handleAddTodo = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!newTodo || !topic || !topic.id) return;
-        await api.addTopicTodo(topic.id, newTodo);
-        setNewTodo('');
-        const t = await api.getTopicTodos(topic.id);
-        setTodos(t || []);
-    };
-
-    const handleToggleTodo = async (todo: TopicTodo) => {
-        if (!topic || !topic.id) return;
-        const nextCompleted = !todo.completed;
-        await api.updateTopicTodo(todo.id, todo.text, nextCompleted);
-        const t = await api.getTopicTodos(topic.id);
-        setTodos(t || []);
-    };
-
-    const handleDeleteTodo = async (id: number) => {
-        if (!topic || !topic.id) return;
-        if (!confirm('Delete this todo?')) return;
-        await api.deleteTopicTodo(id);
-        const t = await api.getTopicTodos(topic.id);
-        setTodos(t || []);
     };
 
     const handleAddLog = async (e: React.FormEvent) => {
@@ -137,6 +108,14 @@ const TopicModal: React.FC<TopicModalProps> = ({ topicId, onClose, onUpdate }) =
         setNotes(n || []);
     };
 
+    const handleArchive = async () => {
+        if (!topic?.id) return;
+        if (!confirm('Archive this topic?')) return;
+        await api.archiveTopic(topic.id);
+        onUpdate();
+        onClose();
+    };
+
     if (!topic) return null;
 
     return (
@@ -156,7 +135,6 @@ const TopicModal: React.FC<TopicModalProps> = ({ topicId, onClose, onUpdate }) =
                     <button className={`tab-btn ${activeTab === 'details' ? 'active' : ''}`} onClick={() => setActiveTab('details')}>Details</button>
                     {topic.id && (
                         <>
-                            <button className={`tab-btn ${activeTab === 'todos' ? 'active' : ''}`} onClick={() => setActiveTab('todos')}>Todos</button>
                             <button className={`tab-btn ${activeTab === 'logs' ? 'active' : ''}`} onClick={() => setActiveTab('logs')}>Worklog</button>
                             <button className={`tab-btn ${activeTab === 'notes' ? 'active' : ''}`} onClick={() => setActiveTab('notes')}>Notes</button>
                         </>
@@ -192,35 +170,6 @@ const TopicModal: React.FC<TopicModalProps> = ({ topicId, onClose, onUpdate }) =
                                     onChange={(e) => setTopic({ ...topic, tags: e.target.value })}
                                 />
                             </section>
-                        </div>
-                    )}
-
-                    {activeTab === 'todos' && (
-                        <div className="task-panel" style={{ flex: 1 }}>
-                            <form onSubmit={handleAddTodo} className="task-panel-form">
-                                <input
-                                    placeholder="Add todo..."
-                                    value={newTodo}
-                                    onChange={(e) => setNewTodo(e.target.value)}
-                                />
-                            </form>
-                            <div className="task-panel-scroll">
-                                <ul className="todo-list">
-                                    {todos.map(todo => (
-                                        <li key={todo.id} className="todo-row">
-                                            <label className="todo-item">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={!!todo.completed}
-                                                    onChange={() => handleToggleTodo(todo)}
-                                                />
-                                                <span>{todo.text}</span>
-                                            </label>
-                                            <button className="icon-btn" onClick={() => handleDeleteTodo(todo.id)}>🗑</button>
-                                        </li>
-                                    ))}
-                                </ul>
-                            </div>
                         </div>
                     )}
 
@@ -269,6 +218,7 @@ const TopicModal: React.FC<TopicModalProps> = ({ topicId, onClose, onUpdate }) =
 
                 <div className="task-modal-footer">
                     <div className="task-modal-actions">
+                        {topic.id && <button onClick={handleArchive}>Archive</button>}
                         {topic.id && <button className="danger" onClick={handleDelete}>Delete Topic</button>}
                         <button className="primary-btn" onClick={handleSave}>Save</button>
                     </div>

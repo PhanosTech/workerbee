@@ -20,6 +20,7 @@ export interface Task {
     priority: string;
     status: string;
     board_position: number;
+    list_position?: number;
     archived: number;
     archived_at: string | null;
     created_at: string;
@@ -104,9 +105,18 @@ export interface Topic {
     description: string;
     status: string;
     tags: string;
+    position?: number;
     archived: number;
+    archived_at?: string | null;
     created_at: string;
     updated_at: string;
+}
+
+export interface TaskNote extends Note {
+    category_id: number | null;
+    task_title: string | null;
+    task_status: string | null;
+    task_archived: number;
 }
 
 export interface TopicTodo {
@@ -167,8 +177,10 @@ export interface ChangesResponse {
 
 export interface TaskFilters {
     status?: string;
+    statuses?: string[];
     category_id?: number;
     include_descendants?: boolean | string;
+    archived?: 'exclude' | 'only' | 'include' | boolean | string;
 }
 
 declare global {
@@ -203,6 +215,7 @@ export const api = {
     // Tasks
     getTasks: (filters: TaskFilters = {}): Promise<Task[]> => invoke('getTasks', filters),
     getTask: (id: number): Promise<Task | null> => invoke('getTask', id),
+    getNote: (id: number): Promise<TaskNote | null> => invoke('getNote', id),
     createTask: (category_id: number | null, title: string, description: string | null, url: string | null): Promise<ChangesResponse> => 
         invoke('createTask', { category_id, title, description, url }),
     updateTask: (id: number, data: Partial<Task>): Promise<ChangesResponse> => invoke('updateTask', { id, data }),
@@ -210,6 +223,8 @@ export const api = {
     archiveDoneTasks: (): Promise<ChangesResponse> => invoke('archiveDoneTasks'),
     reorderTasks: (status: string, ordered_ids: (number | string)[]): Promise<{ ok: boolean }> => 
         invoke('reorderTasks', { status, ordered_ids }),
+    reorderTasksInCategory: (categoryId: number, ordered_ids: (number | string)[]): Promise<{ ok: boolean }> => 
+        invoke('reorderTasksInCategory', { categoryId, ordered_ids }),
 
     // Todo, Log, Note
     addTodo: (taskId: number, text: string): Promise<ChangesResponse> => invoke('addTodo', { taskId, text }),
@@ -261,10 +276,12 @@ export const api = {
         invoke('upsertJournalEntry', { date, content }),
 
     // Topics
-    getTopics: (): Promise<Topic[]> => invoke('getTopics'),
+    getTopics: (filters: { statuses?: string[]; archived?: 'exclude' | 'only' | 'include' | boolean | string } = {}): Promise<Topic[]> => invoke('getTopics', filters),
     getTopic: (id: number): Promise<Topic | null> => invoke('getTopic', id),
     createTopic: (topic: Partial<Topic>): Promise<ChangesResponse> => invoke('createTopic', topic),
     updateTopic: (id: number, topic: Partial<Topic>): Promise<ChangesResponse> => invoke('updateTopic', { id, topic }),
+    reorderTopics: (ordered_ids: (number | string)[]): Promise<{ ok: boolean }> => invoke('reorderTopics', ordered_ids),
+    archiveTopic: (id: number): Promise<ChangesResponse> => invoke('archiveTopic', id),
     deleteTopic: (id: number): Promise<ChangesResponse> => invoke('deleteTopic', id),
 
     // Topic sub-resources

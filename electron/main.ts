@@ -77,13 +77,7 @@ function setupIpcHandlers() {
 
     // Tasks
     ipcMain.handle('getTasks', (_e: IpcMainInvokeEvent, filters: any = {}) => {
-        const { status, category_id, include_descendants } = filters;
-        if (status) return db.getTasksByStatus(status);
-        if (category_id) {
-            const includeDesc = include_descendants === '1' || include_descendants === true || include_descendants === 'true';
-            return includeDesc ? db.getTasksByCategoryWithDescendants(category_id) : db.getTasksByCategory(category_id);
-        }
-        return db.getAllTasks();
+        return db.getTasksByFilters(filters);
     });
     ipcMain.handle('getTask', async (_e: IpcMainInvokeEvent, id: number) => {
         const task = await db.getTask(id);
@@ -95,6 +89,7 @@ function setupIpcHandlers() {
         ]);
         return { ...task, todos, logs, notes };
     });
+    ipcMain.handle('getNote', (_e: IpcMainInvokeEvent, id: number) => db.getTaskNote(id));
     ipcMain.handle('createTask', (_e: IpcMainInvokeEvent, { category_id, title, description, url }: { category_id: number | null, title: string, description: string | null, url: string | null }) => db.createTask(category_id, title, description, url));
     ipcMain.handle('updateTask', (_e: IpcMainInvokeEvent, { id, data }: { id: number, data: any }) => {
         return db.updateTask(
@@ -106,10 +101,14 @@ function setupIpcHandlers() {
             data.status,
             data.story_points,
             data.priority,
-            data.task_type
+            data.task_type,
+            data.due_date,
+            data.board_position,
+            data.list_position
         );
     });
     ipcMain.handle('reorderTasks', (_e: IpcMainInvokeEvent, { status, ordered_ids }: { status: string, ordered_ids: (number | string)[] }) => db.reorderTasksInStatus(status, ordered_ids));
+    ipcMain.handle('reorderTasksInCategory', (_e: IpcMainInvokeEvent, { categoryId, ordered_ids }: { categoryId: number, ordered_ids: (number | string)[] }) => db.reorderTasksInCategory(categoryId, ordered_ids));
     ipcMain.handle('archiveTask', (_e: IpcMainInvokeEvent, id: number) => db.archiveTask(id));
     ipcMain.handle('archiveDoneTasks', () => db.archiveDoneTasks());
     ipcMain.handle('hardDeleteTask', (_e: IpcMainInvokeEvent, id: number) => db.deleteTask(id));
@@ -126,10 +125,12 @@ function setupIpcHandlers() {
     ipcMain.handle('getTaskNotes', (_e: IpcMainInvokeEvent, taskId: number) => db.getTaskNotes(taskId));
 
     // Topics
-    ipcMain.handle('getTopics', () => db.getTopics());
+    ipcMain.handle('getTopics', (_e: IpcMainInvokeEvent, filters: any = {}) => db.getTopics(filters));
     ipcMain.handle('getTopic', (_e: IpcMainInvokeEvent, id: number) => db.getTopic(id));
     ipcMain.handle('createTopic', (_e: IpcMainInvokeEvent, topic: any) => db.createTopic(topic.title, topic.description, topic.status, topic.tags));
     ipcMain.handle('updateTopic', (_e: IpcMainInvokeEvent, { id, topic }: { id: number, topic: any }) => db.updateTopic(id, topic.title, topic.description, topic.status, topic.tags));
+    ipcMain.handle('reorderTopics', (_e: IpcMainInvokeEvent, ordered_ids: (number | string)[]) => db.reorderTopics(ordered_ids));
+    ipcMain.handle('archiveTopic', (_e: IpcMainInvokeEvent, id: number) => db.archiveTopic(id));
     ipcMain.handle('deleteTopic', (_e: IpcMainInvokeEvent, id: number) => db.deleteTopic(id));
 
     // Topic Sub-resources

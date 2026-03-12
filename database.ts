@@ -20,11 +20,13 @@ export interface Task {
     title: string;
     description: string | null;
     url: string | null;
+    due_date?: string | null;
     task_type: string;
     story_points: number;
     priority: string;
     status: string;
     board_position: number;
+    list_position?: number;
     archived: number;
     archived_at: string | null;
     created_at: string;
@@ -102,7 +104,9 @@ export interface Topic {
     description: string;
     status: string;
     tags: string;
+    position?: number;
     archived: number;
+    archived_at?: string | null;
     created_at: string;
     updated_at: string;
 }
@@ -367,7 +371,9 @@ const migrateInPlace = (st: any): AppState => {
         if (t.archived === undefined) t.archived = 0;
         if (t.archived && !t.archived_at) t.archived_at = nowIso();
         if (t.board_position === undefined || t.board_position === null) t.board_position = 0;
+        if (t.list_position === undefined || t.list_position === null) t.list_position = Number(t.board_position ?? 0);
         if (t.story_points === undefined || t.story_points === null) t.story_points = 0;
+        t.due_date = parseDateOnly(t.due_date) || null;
         if (t.status === 'ACTIVE') {
             t.status = 'STARTED';
             if (!t.started_at) t.started_at = nowIso();
@@ -415,9 +421,25 @@ const migrateInPlace = (st: any): AppState => {
 
     typedState.topics.forEach((t) => {
         if (t.archived === undefined) t.archived = 0;
+        if (t.archived && !t.archived_at) t.archived_at = nowIso();
         if (!t.created_at) t.created_at = nowIso();
         if (!t.updated_at) t.updated_at = t.created_at;
         if (!t.status) t.status = 'BACKLOG';
+        if (t.position === undefined || t.position === null) t.position = 0;
+    });
+
+    const nextTaskPositionByCategory = new Map<string, number>();
+    typedState.tasks.forEach((task) => {
+        const key = String(task.category_id ?? 'null');
+        const current = Number(nextTaskPositionByCategory.get(key) ?? 0);
+        if (!Number.isFinite(Number(task.list_position))) task.list_position = current;
+        nextTaskPositionByCategory.set(key, Math.max(current, Number(task.list_position ?? 0) + 1));
+    });
+
+    let nextTopicPosition = 0;
+    typedState.topics.forEach((topic) => {
+        if (!Number.isFinite(Number(topic.position))) topic.position = nextTopicPosition;
+        nextTopicPosition = Math.max(nextTopicPosition, Number(topic.position ?? 0) + 1);
     });
 
     // Recompute lastId based on existing data
@@ -501,6 +523,13 @@ const sortTasksDefault = (a: Task, b: Task): number => {
 const sortTasksByBoardPosition = (a: Task, b: Task): number => {
     const ap = Number(a?.board_position ?? 0);
     const bp = Number(b?.board_position ?? 0);
+    if (ap !== bp) return ap - bp;
+    return sortTasksDefault(a, b);
+};
+
+const sortTasksByListPosition = (a: Task, b: Task): number => {
+    const ap = Number(a?.list_position ?? 0);
+    const bp = Number(b?.list_position ?? 0);
     if (ap !== bp) return ap - bp;
     return sortTasksDefault(a, b);
 };
@@ -683,7 +712,7 @@ export const getAllTasks = async (): Promise<Task[]> => {
     return st.tasks
         .filter((t) => !t.archived)
         .map((t) => taskWithComputedFields(t, todoStats))
-        .sort(sortTasksDefault);
+        .sort(sortTasksByListPosition);
 };
 
 export const getTasksByStatus = async (status: string): Promise<Task[]> => {
@@ -703,7 +732,7 @@ export const getTasksByCategory = async (id: number): Promise<Task[]> => {
     return st.tasks
         .filter((t) => !t.archived && Number(t.category_id) === cid)
         .map((t) => taskWithComputedFields(t, todoStats))
-        .sort(sortTasksDefault);
+        .sort(sortTasksByListPosition);
 };
 
 export const getTasksByCategoryWithDescendants = async (id: number): Promise<Task[]> => {
@@ -713,7 +742,64 @@ export const getTasksByCategoryWithDescendants = async (id: number): Promise<Tas
     return st.tasks
         .filter((t) => !t.archived && ids.has(Number(t.category_id)))
         .map((t) => taskWithComputedFields(t, todoStats))
-        .sort(sortTasksDefault);
+        .sort(sortTasksByListPosition);
+};
+
+export type TaskArchivedMode = 'exclude' | 'only' | 'include';
+
+const normalizeArchivedMode = (value: unknown): TaskArchivedMode => {
+    if (value === true || value === 'only') return 'only';
+    if (value === 'include') return 'include';
+    return 'exclude';
+};
+
+const normalizeStatuses = (statuses?: (string | null | undefined)[]): string[] =>
+    Array.from(
+        new Set(
+            (statuses || [])
+                .map((status) => String(status || '').trim().toUpperCase())
+                .filter(Boolean)
+        )
+    );
+
+export interface GetTasksOptions {
+    statuses?: (string | null | undefined)[];
+    archived?: TaskArchivedMode | boolean | string | null;
+}
+
+export const getTasksByFilters = async (filters: {
+    category_id?: number | null;
+    include_descendants?: boolean | string | null;
+    status?: string | null;
+    statuses?: (string | null | undefined)[];
+    archived?: TaskArchivedMode | boolean | string | null;
+} = {}): Promise<Task[]> => {
+    const st = getState();
+    const todoStats = computeTodoStats(st);
+    const archivedMode = normalizeArchivedMode(filters.archived);
+    const statuses = normalizeStatuses(filters.statuses?.length ? filters.statuses : (filters.status ? [filters.status] : []));
+    const categoryId = Number(filters.category_id);
+    const includeDescendants =
+        filters.include_descendants === true ||
+        filters.include_descendants === 'true' ||
+        filters.include_descendants === '1';
+
+    let categoryIds: Set<number> | null = null;
+    if (Number.isFinite(categoryId) && categoryId > 0) {
+        const ids = includeDescendants ? getDescendantCategoryIds(st, categoryId) : [categoryId];
+        categoryIds = new Set(ids.map((id) => Number(id)).filter((id) => Number.isFinite(id)));
+    }
+
+    return st.tasks
+        .filter((task) => {
+            if (categoryIds && !categoryIds.has(Number(task.category_id))) return false;
+            if (archivedMode === 'exclude' && task.archived) return false;
+            if (archivedMode === 'only' && !task.archived) return false;
+            if (statuses.length && !statuses.includes(String(task.status || '').toUpperCase())) return false;
+            return true;
+        })
+        .map((task) => taskWithComputedFields(task, todoStats))
+        .sort(categoryIds ? sortTasksByListPosition : (statuses.length === 1 ? sortTasksByBoardPosition : sortTasksByListPosition));
 };
 
 export const getTask = async (id: number): Promise<Task | null> => {
@@ -725,20 +811,26 @@ export const createTask = async (category_id: number | null, title: string, desc
     return withWriteLock(async () => {
         const st = getState();
         const id = bumpId('tasks');
+        const nextListPosition = st.tasks
+            .filter((task) => Number(task.category_id) === Number(category_id))
+            .reduce((max, task) => Math.max(max, Number(task.list_position ?? 0)), -1) + 1;
         st.tasks.push({
             id,
             category_id: category_id ?? null,
             title,
             description: description ?? null,
             url: url ?? null,
+            due_date: null,
             task_type: 'NONE',
             story_points: 0,
             priority: 'NORMAL',
             status: 'BACKLOG',
             board_position: 0,
+            list_position: nextListPosition,
             archived: 0,
             archived_at: null,
             created_at: nowIso(),
+            updated_at: nowIso(),
             started_at: null,
             doing_at: null,
             done_at: null,
@@ -748,11 +840,26 @@ export const createTask = async (category_id: number | null, title: string, desc
     });
 };
 
-export const updateTask = async (id: number, category_id: number | null, title: string, description: string | null, url: string | null, status: string | null, story_points: any, priority: string | null, task_type: string | null, board_position?: number | null) => {
+export const updateTask = async (
+    id: number,
+    category_id: number | null,
+    title: string,
+    description: string | null,
+    url: string | null,
+    status: string | null,
+    story_points: any,
+    priority: string | null,
+    task_type: string | null,
+    due_date?: string | null,
+    board_position?: number | null,
+    list_position?: number | null
+) => {
     return withWriteLock(async () => {
         const st = getState();
         const task = st.tasks.find((t) => Number(t.id) === Number(id));
         if (!task) return null;
+        const nextCategoryId = category_id ?? null;
+        const previousCategoryId = task.category_id ?? null;
 
         const nextStatus = String(status ?? task.status ?? 'BACKLOG').toUpperCase();
         const existingStatus = String(task.status ?? 'BACKLOG').toUpperCase();
@@ -794,15 +901,28 @@ export const updateTask = async (id: number, category_id: number | null, title: 
             }
         }
 
-        task.category_id = category_id ?? null;
+        let nextListPosition = task.list_position ?? 0;
+        if (typeof list_position === 'number' && Number.isFinite(list_position)) {
+            nextListPosition = list_position;
+        } else if (nextCategoryId !== previousCategoryId) {
+            const max = st.tasks
+                .filter((item) => Number(item.id) !== Number(id) && Number(item.category_id) === Number(nextCategoryId))
+                .reduce((result, item) => Math.max(result, Number(item.list_position ?? 0)), -1);
+            nextListPosition = max + 1;
+        }
+
+        task.category_id = nextCategoryId;
         task.title = title;
         task.description = description ?? null;
         task.url = url ?? null;
+        task.due_date = parseDateOnly(due_date ?? task.due_date ?? null) || null;
         task.status = nextStatus;
         task.story_points = normalizeStoryPoints(story_points, task.story_points ?? 0);
         task.priority = normalizePriority(priority ?? task.priority ?? 'NORMAL');
         task.task_type = normalizeTaskType(task_type ?? task.task_type ?? 'NONE');
         task.board_position = nextBoardPosition;
+        task.list_position = nextListPosition;
+        task.updated_at = nowIso();
         task.started_at = started_at;
         task.doing_at = doing_at;
         task.done_at = done_at;
@@ -829,6 +949,21 @@ export const reorderTasksInStatus = async (status: string, orderedIds: (number |
     });
 };
 
+export const reorderTasksInCategory = async (categoryId: number, orderedIds: (number | string)[]) => {
+    return withWriteLock(async () => {
+        const st = getState();
+        const cid = Number(categoryId);
+        orderedIds.forEach((rawId, idx) => {
+            const id = Number(rawId);
+            const task = st.tasks.find((t) => Number(t.id) === id);
+            if (!task || Number(task.category_id) !== cid) return;
+            task.list_position = idx;
+        });
+        await persist();
+        return { ok: true };
+    });
+};
+
 export const archiveTask = async (id: number) => {
     return withWriteLock(async () => {
         const st = getState();
@@ -836,6 +971,7 @@ export const archiveTask = async (id: number) => {
         if (!task) return { changes: 0 };
         task.archived = 1;
         if (!task.archived_at) task.archived_at = nowIso();
+        task.updated_at = nowIso();
         await persist();
         return { changes: 1 };
     });
@@ -971,6 +1107,25 @@ export const getTaskNotes = async (taskId: number): Promise<Note[]> => {
         .filter((n) => Number(n.task_id) === id)
         .slice()
         .sort((a, b) => Number(b.id) - Number(a.id));
+};
+
+export const getTaskNote = async (id: number): Promise<(Note & {
+    category_id: number | null;
+    task_title: string | null;
+    task_status: string | null;
+    task_archived: number;
+}) | null> => {
+    const st = getState();
+    const note = st.notes.find((row) => Number(row.id) === Number(id));
+    if (!note) return null;
+    const task = st.tasks.find((row) => Number(row.id) === Number(note.task_id));
+    return {
+        ...note,
+        category_id: task?.category_id ?? null,
+        task_title: task?.title ?? null,
+        task_status: task?.status ?? null,
+        task_archived: Number(task?.archived ?? 0),
+    };
 };
 
 export const addNote = async (task_id: number, title: string | null, content: string | null, type: string) => {
@@ -1267,19 +1422,23 @@ export const search = async (query: string, limit = 60): Promise<any[]> => {
         });
     });
 
-    st.label_notes.forEach((note) => {
-        if (!note || note.archived) return;
-        const title = String(note.title || '').trim() || 'Untitled note';
+    const taskById = new Map(st.tasks.map((task) => [Number(task.id), task]));
+    st.notes.forEach((note) => {
+        const task = taskById.get(Number(note.task_id));
+        if (!note || !task || task.archived) return;
+        const title = String(note.title || '').trim() || `Note for ${task.title || 'task'}`;
         const bodyText = htmlToText(note.content);
-        if (!matches(title, bodyText)) return;
+        const taskTitle = String(task.title || '').trim();
+        if (!matches(`${taskTitle} ${title}`.trim(), bodyText)) return;
         results.push({
             type: 'note',
             id: Number(note.id),
             title,
-            category_id: note.category_id ?? null,
-            updated_at: note.updated_at ?? note.created_at ?? null,
+            category_id: task.category_id ?? null,
+            status: task.status ?? null,
+            updated_at: null,
             snippet: makeSnippet(bodyText || title),
-            score: scoreHit(title, bodyText),
+            score: scoreHit(`${taskTitle} ${title}`.trim(), bodyText),
         });
     });
 
@@ -1407,9 +1566,28 @@ export const getArchivedLabelNotesByDateRange = async (startDate: string, endDat
 };
 
 // Topics API
-export const getTopics = async (): Promise<Topic[]> => {
+export const getTopics = async (filters: {
+    statuses?: (string | null | undefined)[];
+    archived?: TaskArchivedMode | boolean | string | null;
+} = {}): Promise<Topic[]> => {
     const st = getState();
-    return st.topics.filter((t) => !t.archived).map((t) => ({ ...t }));
+    const archivedMode = normalizeArchivedMode(filters.archived);
+    const statuses = normalizeStatuses(filters.statuses);
+    return st.topics
+        .filter((topic) => {
+            if (archivedMode === 'exclude' && topic.archived) return false;
+            if (archivedMode === 'only' && !topic.archived) return false;
+            if (statuses.length && !statuses.includes(String(topic.status || '').toUpperCase())) return false;
+            return true;
+        })
+        .slice()
+        .sort((a, b) => {
+            const ap = Number(a.position ?? 0);
+            const bp = Number(b.position ?? 0);
+            if (ap !== bp) return ap - bp;
+            return String(b.updated_at || '').localeCompare(String(a.updated_at || ''));
+        })
+        .map((topic) => ({ ...topic }));
 };
 export const getTopic = async (id: number): Promise<Topic | null> => {
     const st = getState();
@@ -1419,13 +1597,16 @@ export const createTopic = async (title: string, description: string | null, sta
     return withWriteLock(async () => {
         const st = getState();
         const id = bumpId('topics');
+        const nextPosition = st.topics.reduce((max, topic) => Math.max(max, Number(topic.position ?? 0)), -1) + 1;
         const topic: Topic = {
             id,
             title,
             description: description || '',
             status: status || 'BACKLOG',
             tags: tags || '',
+            position: nextPosition,
             archived: 0,
+            archived_at: null,
             created_at: nowIso(),
             updated_at: nowIso(),
         };
@@ -1443,6 +1624,34 @@ export const updateTopic = async (id: number, title: string, description: string
         topic.description = description || '';
         topic.status = status || 'BACKLOG';
         topic.tags = tags || '';
+        topic.updated_at = nowIso();
+        await persist();
+        return { changes: 1 };
+    });
+};
+
+export const reorderTopics = async (orderedIds: (number | string)[]) => {
+    return withWriteLock(async () => {
+        const st = getState();
+        orderedIds.forEach((rawId, index) => {
+            const id = Number(rawId);
+            const topic = st.topics.find((row) => Number(row.id) === id);
+            if (!topic) return;
+            topic.position = index;
+            topic.updated_at = nowIso();
+        });
+        await persist();
+        return { ok: true };
+    });
+};
+
+export const archiveTopic = async (id: number) => {
+    return withWriteLock(async () => {
+        const st = getState();
+        const topic = st.topics.find((row) => Number(row.id) === Number(id));
+        if (!topic) return { changes: 0 };
+        topic.archived = 1;
+        topic.archived_at = nowIso();
         topic.updated_at = nowIso();
         await persist();
         return { changes: 1 };

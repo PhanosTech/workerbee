@@ -1,8 +1,6 @@
 import React, { useMemo, useState, useEffect, useRef, FormEvent, DragEvent, KeyboardEvent } from 'react';
-import { api, Task, Todo, Log, Note, Category, Topic, LabelNote } from '../api';
+import { api, Task, Todo, Log, Note, Category, Topic } from '../api';
 import TiptapEditor from './TiptapEditor';
-
-const COPY_TASK_NOTE_FOLDER_KEY = 'wb-copy-task-note-folder-id';
 
 const moveBefore = <T extends { id: number | string }>(items: T[], movingId: number | string, targetId: number | string): T[] => {
     const fromIndex = items.findIndex((t) => t.id === movingId);
@@ -37,26 +35,16 @@ const TaskModal: React.FC<TaskModalProps> = ({ taskId, onClose, onUpdate }) => {
     const [todos, setTodos] = useState<Todo[]>([]);
     const [logs, setLogs] = useState<Log[]>([]);
     const [notes, setNotes] = useState<Note[]>([]);
-    const [labelNotes, setLabelNotes] = useState<LabelNote[]>([]);
     const [categories, setCategories] = useState<Category[]>([]);
     const [newTodo, setNewTodo] = useState('');
     const [newLog, setNewLog] = useState('');
     const [editingTodoId, setEditingTodoId] = useState<number | null>(null);
     const [editingTodoText, setEditingTodoText] = useState('');
     const [dragTodoId, setDragTodoId] = useState<number | null>(null);
-    const [notesTab, setNotesTab] = useState<'task' | 'label'>('task');
     const [showNoteModal, setShowNoteModal] = useState(false);
     const [activeNote, setActiveNote] = useState<Note | null>(null);
     const [noteTitleDraft, setNoteTitleDraft] = useState('');
     const [noteDraft, setNoteDraft] = useState('');
-    const [showLabelNoteModal, setShowLabelNoteModal] = useState(false);
-    const [activeLabelNote, setActiveLabelNote] = useState<LabelNote | null>(null);
-    const [labelNoteTitleDraft, setLabelNoteTitleDraft] = useState('');
-    const [labelNoteDraft, setLabelNoteDraft] = useState('');
-    const [copyToFolderOpen, setCopyToFolderOpen] = useState(false);
-    const [copyTargetCategoryId, setCopyTargetCategoryId] = useState<number | null>(null);
-    const [copyingNote, setCopyingNote] = useState(false);
-    const [copyStatus, setCopyStatus] = useState<string | null>(null);
     const [copyFoldersLoading, setCopyFoldersLoading] = useState(false);
     const [allTopics, setAllTopics] = useState<Topic[]>([]);
     const [taskTopicIds, setTaskTopicIds] = useState<(number | string)[]>([]);
@@ -73,12 +61,6 @@ const TaskModal: React.FC<TaskModalProps> = ({ taskId, onClose, onUpdate }) => {
         loadTaskTopics();
         loadCategories();
     }, [taskId]);
-
-    useEffect(() => {
-        if (notesTab !== 'label') return;
-        if (!task?.category_id) return;
-        loadLabelNotes(task.category_id);
-    }, [notesTab, task?.category_id]);
 
     const loadTaskData = async ({ preserveDraft = true } = {}) => {
         try {
@@ -122,15 +104,6 @@ const TaskModal: React.FC<TaskModalProps> = ({ taskId, onClose, onUpdate }) => {
     const updateTaskDraft = (updates: Partial<Task>) => {
         setTask((prev) => (prev ? { ...prev, ...updates } : prev));
         setTaskDirty(true);
-    };
-
-    const loadLabelNotes = async (categoryId: number) => {
-        try {
-            const data = await api.getLabelNotes(categoryId);
-            setLabelNotes(data || []);
-        } catch (err) {
-            console.error(err);
-        }
     };
 
     const loadCategories = async () => {
@@ -180,41 +153,6 @@ const TaskModal: React.FC<TaskModalProps> = ({ taskId, onClose, onUpdate }) => {
         walk(null, 0);
         return out;
     }, [categories]);
-
-    const readLastCopyFolderId = (): number | null => {
-        try {
-            const raw = window.localStorage.getItem(COPY_TASK_NOTE_FOLDER_KEY);
-            const parsed = raw ? Number(raw) : null;
-            return parsed && Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-        } catch {
-            return null;
-        }
-    };
-
-    const openCopyToFolder = async () => {
-        setCopyStatus(null);
-        setCopyToFolderOpen(true);
-        const fallback =
-            readLastCopyFolderId() ??
-            (task?.category_id && Number.isFinite(Number(task.category_id)) ? Number(task.category_id) : null);
-        setCopyTargetCategoryId((prev) => prev ?? fallback);
-        await loadCategories();
-    };
-
-    const closeCopyToFolder = () => {
-        setCopyToFolderOpen(false);
-        setCopyingNote(false);
-        setCopyStatus(null);
-    };
-
-    useEffect(() => {
-        if (!copyToFolderOpen) return;
-        if (!orderedCategoryOptions.length) return;
-        const selectedId = Number(copyTargetCategoryId);
-        const exists = orderedCategoryOptions.some((opt) => Number(opt.id) === selectedId);
-        if (exists) return;
-        setCopyTargetCategoryId(orderedCategoryOptions[0].id);
-    }, [copyToFolderOpen, orderedCategoryOptions, copyTargetCategoryId]);
 
     const handleSaveTask = async (updates: Partial<Task> = {}) => {
         if (!task) return;
@@ -349,9 +287,6 @@ const TaskModal: React.FC<TaskModalProps> = ({ taskId, onClose, onUpdate }) => {
         setActiveNote(note || null);
         setNoteTitleDraft(note?.title || '');
         setNoteDraft(normalizeNoteContent(note?.content || ''));
-        setCopyToFolderOpen(false);
-        setCopyTargetCategoryId(null);
-        setCopyStatus(null);
         setShowNoteModal(true);
     };
 
@@ -360,7 +295,6 @@ const TaskModal: React.FC<TaskModalProps> = ({ taskId, onClose, onUpdate }) => {
         setActiveNote(null);
         setNoteTitleDraft('');
         setNoteDraft('');
-        closeCopyToFolder();
     };
 
     const handleSaveNote = async () => {
@@ -375,79 +309,12 @@ const TaskModal: React.FC<TaskModalProps> = ({ taskId, onClose, onUpdate }) => {
         loadTaskData();
     };
 
-    const handleCopyNoteToFolder = async () => {
-        const targetId = Number(copyTargetCategoryId);
-        if (!Number.isFinite(targetId) || targetId <= 0) return;
-        if (isEmptyHtml(noteDraft)) return;
-
-        const title = noteTitleDraft?.trim()
-            ? noteTitleDraft.trim()
-            : task?.title
-              ? `[Task] ${task.title}`
-              : 'Task note';
-
-        setCopyingNote(true);
-        setCopyStatus(null);
-        try {
-            await api.addLabelNote(targetId, title, noteDraft, 'work_notes');
-            try {
-                window.localStorage.setItem(COPY_TASK_NOTE_FOLDER_KEY, String(targetId));
-            } catch {
-                // ignore
-            }
-            const folderName = categories.find((c) => Number(c.id) === targetId)?.name;
-            setCopyStatus(folderName ? `Copied to “${folderName}”.` : 'Copied.');
-        } catch (err) {
-            console.error(err);
-            setCopyStatus('Copy failed.');
-        } finally {
-            setCopyingNote(false);
-        }
-    };
-
     const handleDeleteNote = async () => {
         if (!activeNote?.id) return;
         if (!confirm('Delete this note?')) return;
         await api.deleteNote(activeNote.id);
         closeNoteModal();
         loadTaskData();
-    };
-
-    const openLabelNoteModal = (note: LabelNote | null) => {
-        setActiveLabelNote(note || null);
-        setLabelNoteTitleDraft(note?.title || '');
-        setLabelNoteDraft(note?.content || '');
-        setShowLabelNoteModal(true);
-    };
-
-    const closeLabelNoteModal = () => {
-        setShowLabelNoteModal(false);
-        setActiveLabelNote(null);
-        setLabelNoteTitleDraft('');
-        setLabelNoteDraft('');
-    };
-
-    const handleSaveLabelNote = async () => {
-        if (!task?.category_id) return;
-        if (isEmptyHtml(labelNoteDraft)) return;
-
-        if (activeLabelNote?.id) {
-            await api.updateLabelNote(activeLabelNote.id, labelNoteTitleDraft, labelNoteDraft);
-        } else {
-            await api.addLabelNote(task.category_id, labelNoteTitleDraft, labelNoteDraft, 'work_notes');
-        }
-
-        closeLabelNoteModal();
-        loadLabelNotes(task.category_id);
-    };
-
-    const handleDeleteLabelNote = async () => {
-        if (!activeLabelNote?.id) return;
-        if (!confirm('Delete this folder note?')) return;
-        await api.deleteLabelNote(activeLabelNote.id);
-        const categoryId = task?.category_id;
-        closeLabelNoteModal();
-        if (categoryId) loadLabelNotes(categoryId);
     };
 
     const handleArchiveTask = async () => {
@@ -604,7 +471,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ taskId, onClose, onUpdate }) => {
                             <div className="task-panel-header">
                                 <label>Todos</label>
                                 <span className="muted">
-                                    {todos.filter((t) => t.completed).length}/{todos.length}
+                                    {todos.filter((t) => t.completed).length}/{todos.length} · drag to sort
                                 </span>
                             </div>
                             <form onSubmit={handleAddTodo} className="task-panel-form todo-add-form">
@@ -639,7 +506,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ taskId, onClose, onUpdate }) => {
                                             <span className="todo-drag-handle" aria-hidden="true">
                                                 ⋮⋮
                                             </span>
-                                            <label className="todo-item">
+                                            <div className="todo-item">
                                                 <input
                                                     type="checkbox"
                                                     checked={!!todo.completed}
@@ -664,7 +531,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ taskId, onClose, onUpdate }) => {
                                                 ) : (
                                                     <span onDoubleClick={() => handleStartEditTodo(todo)}>{todo.text}</span>
                                                 )}
-                                            </label>
+                                            </div>
                                             <div className="todo-actions">
                                                 {editingTodoId === todo.id ? (
                                                     <>
@@ -696,7 +563,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ taskId, onClose, onUpdate }) => {
                                                             title="Edit"
                                                             aria-label="Edit todo"
                                                         >
-                                                            ✎
+                                                            ✏
                                                         </button>
                                                         <button
                                                             type="button"
@@ -705,7 +572,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ taskId, onClose, onUpdate }) => {
                                                             title="Delete"
                                                             aria-label="Delete todo"
                                                         >
-                                                            🗑
+                                                            ✕
                                                         </button>
                                                     </>
                                                 )}
@@ -746,85 +613,25 @@ const TaskModal: React.FC<TaskModalProps> = ({ taskId, onClose, onUpdate }) => {
                     <div className="task-col">
                         <section className="task-panel">
                             <div className="task-panel-header">
-                                <div className="notes-tabbar" role="tablist" aria-label="Notes">
-                                    <button
-                                        type="button"
-                                        className={`notes-tab ${notesTab === 'task' ? 'active' : ''}`}
-                                        onClick={() => setNotesTab('task')}
-                                    >
-                                        Task Notes
-                                    </button>
-                                    <button
-                                        type="button"
-                                        className={`notes-tab ${notesTab === 'label' ? 'active' : ''}`}
-                                        onClick={() => setNotesTab('label')}
-                                    >
-                                        Folder Notes
-                                    </button>
-                                </div>
-                                <button onClick={() => (notesTab === 'task' ? openNoteModal(null) : openLabelNoteModal(null))}>
+                                <label>Task Notes</label>
+                                <button onClick={() => openNoteModal(null)}>
                                     + New
                                 </button>
                             </div>
                             <div className="task-panel-scroll" role="region" aria-label="Notes">
-                                {notesTab === 'task' && (
-                                    <ul className="notes-list">
-                                        {notes.map((note) => (
-                                            <li key={note.id} onClick={() => openNoteModal(note)}>
-                                                <div className="note-row-title">
-                                                    {note.title?.trim() ? note.title : `Note #${note.id}`}
-                                                </div>
-                                                <div className="note-row-preview">
-                                                    {htmlToPlainText(note.content).slice(0, 90) || 'Empty note'}
-                                                </div>
-                                            </li>
-                                        ))}
-                                        {notes.length === 0 && <li className="notes-empty">No task notes yet.</li>}
-                                    </ul>
-                                )}
-
-                                {notesTab === 'label' && (
-                                    <>
-                                        {!task?.category_id && <div className="muted">This task has no folder.</div>}
-                                        {task?.category_id && (
-                                            <ul className="notes-list label-notes-list">
-                                                {labelNotes.map((note) => (
-                                                    <li key={note.id} className="label-note-row" onClick={() => openLabelNoteModal(note)}>
-                                                        <div className="label-note-row-top">
-                                                            <div className="label-note-row-title">
-                                                                {note.title?.trim() ? note.title : `Note #${note.id}`}
-                                                            </div>
-                                                            <div
-                                                                className="label-note-row-actions"
-                                                                onClick={(e) => e.stopPropagation()}
-                                                            >
-                                                                <button
-                                                                    type="button"
-                                                                    className="icon-btn"
-                                                                    title="Edit note"
-                                                                    onClick={() => openLabelNoteModal(note)}
-                                                                >
-                                                                    ✏️
-                                                                </button>
-                                                            </div>
-                                                        </div>
-                                                        <div className="label-note-row-preview">
-                                                            {htmlToPlainText(note.content).slice(0, 140) || 'Empty note'}
-                                                        </div>
-                                                        <div className="label-note-row-meta">
-                                                            {note.updated_at
-                                                                ? new Date(note.updated_at).toLocaleString()
-                                                                : new Date().toLocaleString()}
-                                                        </div>
-                                                    </li>
-                                                ))}
-                                                {labelNotes.length === 0 && (
-                                                    <li className="notes-empty">No folder notes yet.</li>
-                                                )}
-                                            </ul>
-                                        )}
-                                    </>
-                                )}
+                                <ul className="notes-list">
+                                    {notes.map((note) => (
+                                        <li key={note.id} onClick={() => openNoteModal(note)}>
+                                            <div className="note-row-title">
+                                                {note.title?.trim() ? note.title : `Note #${note.id}`}
+                                            </div>
+                                            <div className="note-row-preview">
+                                                {htmlToPlainText(note.content).slice(0, 90) || 'Empty note'}
+                                            </div>
+                                        </li>
+                                    ))}
+                                    {notes.length === 0 && <li className="notes-empty">No task notes yet.</li>}
+                                </ul>
                             </div>
                         </section>
                     </div>
@@ -863,95 +670,10 @@ const TaskModal: React.FC<TaskModalProps> = ({ taskId, onClose, onUpdate }) => {
                             placeholder="Paste an email, a snippet, or free-form notes…"
                             onRequestSave={handleSaveNote}
                         />
-                        {copyToFolderOpen && (
-                            <div className="copy-to-folder-row" role="region" aria-label="Copy task note to folder">
-                                <select
-                                    value={copyTargetCategoryId ?? ''}
-                                    onChange={(e) => setCopyTargetCategoryId(Number(e.target.value) || null)}
-                                    disabled={copyFoldersLoading}
-                                    aria-label="Target folder"
-                                >
-                                    <option value="" disabled>
-                                        {copyFoldersLoading ? 'Loading folders…' : 'Select a folder…'}
-                                    </option>
-                                    {orderedCategoryOptions.map((opt) => (
-                                        <option key={opt.id} value={opt.id}>
-                                            {opt.label}
-                                        </option>
-                                    ))}
-                                </select>
-                                <button
-                                    type="button"
-                                    onClick={handleCopyNoteToFolder}
-                                    disabled={
-                                        copyFoldersLoading ||
-                                        copyingNote ||
-                                        !copyTargetCategoryId ||
-                                        isEmptyHtml(noteDraft)
-                                    }
-                                    title="Copy this task note into a folder note"
-                                >
-                                    {copyingNote ? 'Copying…' : 'Copy'}
-                                </button>
-                                <button type="button" className="icon-btn" onClick={closeCopyToFolder} title="Close copy">
-                                    ✕
-                                </button>
-                            </div>
-                        )}
-                        {copyStatus ? <div className="muted copy-to-folder-status">{copyStatus}</div> : null}
                         <div className="modal-actions">
                             <button onClick={closeNoteModal}>Cancel</button>
                             {activeNote?.id && <button onClick={handleDeleteNote}>Delete</button>}
-                            {!copyToFolderOpen && (
-                                <button type="button" onClick={openCopyToFolder} disabled={isEmptyHtml(noteDraft)}>
-                                    📁 Copy to folder…
-                                </button>
-                            )}
                             <button className="primary-btn" onClick={handleSaveNote} disabled={isEmptyHtml(noteDraft)}>
-                                Save Note
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {showLabelNoteModal && (
-                <div
-                    className="modal-overlay note-modal-overlay"
-                    onMouseDown={(e) => {
-                        if (e.target !== e.currentTarget) return;
-                        closeLabelNoteModal();
-                    }}
-                >
-                    <div className="modal-content note-modal">
-                        <div className="modal-header">
-                            <h3 style={{ margin: 0 }}>{activeLabelNote ? 'Edit Folder Note' : 'New Folder Note'}</h3>
-                            <button className="close-btn" onClick={closeLabelNoteModal}>&times;</button>
-                        </div>
-
-                        <input
-                            type="text"
-                            placeholder="Title"
-                            value={labelNoteTitleDraft}
-                            onChange={(e) => setLabelNoteTitleDraft(e.target.value)}
-                            style={{ marginBottom: 10 }}
-                        />
-
-                        <TiptapEditor
-                            content={labelNoteDraft}
-                            onChange={setLabelNoteDraft}
-                            placeholder="Folder notes…"
-                            onRequestSave={handleSaveLabelNote}
-                        />
-
-                        <div className="modal-actions">
-                            <button onClick={closeLabelNoteModal}>Cancel</button>
-                            {activeLabelNote?.id && <button onClick={handleDeleteLabelNote}>Delete</button>}
-                            <button
-                                className="primary-btn"
-                                onClick={handleSaveLabelNote}
-                                disabled={isEmptyHtml(labelNoteDraft)}
-                            >
                                 Save Note
                             </button>
                         </div>

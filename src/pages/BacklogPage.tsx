@@ -29,6 +29,37 @@ interface BacklogPageProps {
     onOpenSearch: () => void;
 }
 
+type TaskView = 'active' | 'done' | 'archived';
+
+const moveBefore = <T extends { id: number }>(items: T[], movingId: number, targetId: number): T[] => {
+    const fromIndex = items.findIndex((item) => item.id === movingId);
+    const toIndex = items.findIndex((item) => item.id === targetId);
+    if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) return items;
+
+    const next = items.slice();
+    const [moved] = next.splice(fromIndex, 1);
+    const insertIndex = fromIndex < toIndex ? toIndex - 1 : toIndex;
+    next.splice(insertIndex, 0, moved);
+    return next;
+};
+
+const moveToEnd = <T extends { id: number }>(items: T[], movingId: number): T[] => {
+    const fromIndex = items.findIndex((item) => item.id === movingId);
+    if (fromIndex === -1 || fromIndex === items.length - 1) return items;
+    const next = items.slice();
+    const [moved] = next.splice(fromIndex, 1);
+    next.push(moved);
+    return next;
+};
+
+const taskTypeLabel = (value: string | null | undefined): string => {
+    const normalized = String(value || 'NONE').trim().toUpperCase();
+    if (normalized === 'FOLLOW_UP') return 'Follow Up';
+    if (normalized === 'MEETING') return 'Meeting';
+    if (normalized === 'ISSUE') return 'Issue';
+    return 'None';
+};
+
 const BacklogPage: React.FC<BacklogPageProps> = ({ focus, onOpenSearch }) => {
     const [categories, setCategories] = useState<CategoryNode[]>([]);
     const [categoriesLoaded, setCategoriesLoaded] = useState(false);
@@ -38,6 +69,7 @@ const BacklogPage: React.FC<BacklogPageProps> = ({ focus, onOpenSearch }) => {
     const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
     const [selectedTask, setSelectedTask] = useState<{ id: number } | null>(null);
     const [activeTab, setActiveTab] = useState<'tasks' | 'notes'>('tasks'); // tasks | notes
+    const [taskView, setTaskView] = useState<TaskView>('active');
     const [noteTypeFilter, setNoteTypeFilter] = useState('work_notes'); // email, meeting_notes, review_notes, work_notes
     const [includeSubLabels, setIncludeSubLabels] = useState(false);
 
@@ -48,6 +80,7 @@ const BacklogPage: React.FC<BacklogPageProps> = ({ focus, onOpenSearch }) => {
     const [newTaskTitle, setNewTaskTitle] = useState('');
     const [draggingCategory, setDraggingCategory] = useState<{ id: number; parent_id: number | null } | null>(null); // { id, parent_id }
     const [dragOverCategoryId, setDragOverCategoryId] = useState<number | null>(null);
+    const [dragTaskId, setDragTaskId] = useState<number | null>(null);
 
     const createCatInputRef = useRef<HTMLInputElement>(null);
     const createTaskInputRef = useRef<HTMLInputElement>(null);
@@ -173,7 +206,7 @@ const BacklogPage: React.FC<BacklogPageProps> = ({ focus, onOpenSearch }) => {
             setTasks([]);
             setNotes([]);
         }
-    }, [selectedCategoryId, activeTab, noteTypeFilter, categories, includeSubLabels]);
+    }, [selectedCategoryId, activeTab, noteTypeFilter, categories, includeSubLabels, taskView]);
 
     const loadCategories = async () => {
         const data = await api.getCategories();
@@ -199,6 +232,13 @@ const BacklogPage: React.FC<BacklogPageProps> = ({ focus, onOpenSearch }) => {
     const loadTasks = async (catId: number) => {
         const filters: any = { category_id: catId };
         if (includeSubLabels) filters.include_descendants = '1';
+        if (taskView === 'active') {
+            filters.statuses = ['BACKLOG', 'STARTED', 'DOING'];
+        } else if (taskView === 'done') {
+            filters.statuses = ['DONE'];
+        } else {
+            filters.archived = 'only';
+        }
         const data = await api.getTasks(filters);
         setTasks(data);
     };
@@ -255,6 +295,37 @@ const BacklogPage: React.FC<BacklogPageProps> = ({ focus, onOpenSearch }) => {
         e.stopPropagation();
         await api.updateTask(task.id, { status: 'STARTED' });
         if (selectedCategory) loadTasks(selectedCategory.id);
+    };
+
+    const parseDragTaskId = (e: React.DragEvent): number | null => {
+        const raw = e.dataTransfer?.getData?.('text/plain');
+        const id = Number(raw || dragTaskId);
+        return Number.isFinite(id) && id > 0 ? id : null;
+    };
+
+    const canManuallySortTasks = !!selectedCategory && !includeSubLabels;
+
+    const handleDropTaskOn = async (e: React.DragEvent, targetId: number) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!selectedCategory || !canManuallySortTasks) return;
+        const movingId = parseDragTaskId(e);
+        if (!movingId || movingId === targetId) return;
+        const next = moveBefore(tasks, movingId, targetId);
+        setTasks(next);
+        setDragTaskId(null);
+        await api.reorderTasksInCategory(selectedCategory.id, next.map((task) => task.id));
+    };
+
+    const handleDropTaskToEnd = async (e: React.DragEvent) => {
+        e.preventDefault();
+        if (!selectedCategory || !canManuallySortTasks) return;
+        const movingId = parseDragTaskId(e);
+        if (!movingId) return;
+        const next = moveToEnd(tasks, movingId);
+        setTasks(next);
+        setDragTaskId(null);
+        await api.reorderTasksInCategory(selectedCategory.id, next.map((task) => task.id));
     };
 
     // Note Handlers
@@ -628,6 +699,37 @@ const BacklogPage: React.FC<BacklogPageProps> = ({ focus, onOpenSearch }) => {
 
                 {selectedCategory && activeTab === 'tasks' && (
                     <>
+                        <div className="backlog-task-toolbar">
+                            <div className="backlog-view-switch" role="tablist" aria-label="Task view">
+                                <button
+                                    type="button"
+                                    className={`filter-btn ${taskView === 'active' ? 'active' : ''}`}
+                                    onClick={() => setTaskView('active')}
+                                >
+                                    Backlog + Doing
+                                </button>
+                                <button
+                                    type="button"
+                                    className={`filter-btn ${taskView === 'done' ? 'active' : ''}`}
+                                    onClick={() => setTaskView('done')}
+                                >
+                                    Done
+                                </button>
+                                <button
+                                    type="button"
+                                    className={`filter-btn ${taskView === 'archived' ? 'active' : ''}`}
+                                    onClick={() => setTaskView('archived')}
+                                >
+                                    Archived
+                                </button>
+                            </div>
+                            {!canManuallySortTasks && (
+                                <div className="muted" style={{ fontSize: '0.8rem' }}>
+                                    Manual sort works per folder. Turn off sub-folder mode to reorder.
+                                </div>
+                            )}
+                        </div>
+
                         {showCreateTask ? (
                             <form onSubmit={handleCreateTask} className="task-create-form">
                                 <input
@@ -651,32 +753,51 @@ const BacklogPage: React.FC<BacklogPageProps> = ({ focus, onOpenSearch }) => {
                         )}
 
                         <div className="tasks-table-wrap">
-                            <table className="tasks-table">
+                            <table className="tasks-table backlog-tasks-table" onDragOver={(e) => canManuallySortTasks && e.preventDefault()} onDrop={handleDropTaskToEnd}>
                                 <thead>
                                     <tr>
+                                        <th style={{ width: 40 }} />
                                         <th>Task</th>
-                                        <th>Description</th>
-                                        <th>Todos</th>
+                                        <th style={{ width: 120 }}>Priority</th>
                                         <th>Status</th>
-                                        <th style={{ width: 140 }}>Actions</th>
+                                        <th style={{ width: 140 }}>Type</th>
+                                        <th style={{ width: 170 }}>Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {tasks.map((task) => {
-                                        const total = Number(task.todo_total || 0);
-                                        const completed = Number(task.todo_completed || 0);
-                                        const pct = total ? Math.round((completed / total) * 100) : null;
-
                                         return (
-                                            <tr key={task.id} className="tasks-row" onClick={() => setSelectedTask(task)}>
-                                                <td className="tasks-title">{task.title}</td>
-                                                <td className="tasks-desc">{task.description || '—'}</td>
-                                                <td className="tasks-todos">
-                                                    {total ? (
-                                                        <span className="todo-badge">{completed}/{total} ({pct}%)</span>
-                                                    ) : (
-                                                        '—'
-                                                    )}
+                                            <tr
+                                                key={task.id}
+                                                className={`tasks-row backlog-task-row task-type-${String(task.task_type || 'NONE').toLowerCase().replaceAll('_', '-')}`}
+                                                draggable={canManuallySortTasks}
+                                                onDragStart={(e) => {
+                                                    if (!canManuallySortTasks) return;
+                                                    setDragTaskId(task.id);
+                                                    e.dataTransfer.effectAllowed = 'move';
+                                                    e.dataTransfer.setData('text/plain', String(task.id));
+                                                }}
+                                                onDragEnd={() => setDragTaskId(null)}
+                                                onDrop={(e) => handleDropTaskOn(e, task.id)}
+                                                onClick={() => setSelectedTask(task)}
+                                            >
+                                                <td className="tasks-handle-cell" onClick={(e) => e.stopPropagation()}>
+                                                    <span className={`drag-handle ${canManuallySortTasks ? '' : 'disabled'}`} title={canManuallySortTasks ? 'Drag to reorder' : 'Sorting disabled while showing sub-folders'}>
+                                                        ⋮⋮
+                                                    </span>
+                                                </td>
+                                                <td className="tasks-title">
+                                                    <span>{task.title}</span>
+                                                    {task.description?.trim() ? (
+                                                        <span className="task-desc-tooltip" title={task.description}>
+                                                            ⓘ
+                                                        </span>
+                                                    ) : null}
+                                                </td>
+                                                <td>
+                                                    <span className={`priority-badge priority-${String(task.priority || 'NORMAL').toLowerCase()}`}>
+                                                        {String(task.priority || 'NORMAL').toLowerCase().replace(/^\w/, (m) => m.toUpperCase())}
+                                                    </span>
                                                 </td>
                                                 <td className="tasks-status">
                                                     {task.status === 'BACKLOG' && <span className="status-badge">Backlog</span>}
@@ -684,12 +805,15 @@ const BacklogPage: React.FC<BacklogPageProps> = ({ focus, onOpenSearch }) => {
                                                     {task.status === 'DOING' && <span className="status-badge active">Doing</span>}
                                                     {task.status === 'DONE' && <span className="status-badge done">Done</span>}
                                                 </td>
+                                                <td>
+                                                    <span className="task-type-pill">{taskTypeLabel(task.task_type)}</span>
+                                                </td>
                                                 <td className="tasks-actions" onClick={(e) => e.stopPropagation()}>
-                                                    {task.status === 'BACKLOG' && (
+                                                    {taskView === 'active' && task.status === 'BACKLOG' && (
                                                         <button onClick={(e) => handleStartTask(e, task)}>Start</button>
                                                     )}
                                                     <button onClick={() => setSelectedTask(task)} className="primary-btn">Open</button>
-                                                    <button className="danger" onClick={(e) => handleArchiveTask(e, task)}>Archive</button>
+                                                    {taskView !== 'archived' && <button className="danger" onClick={(e) => handleArchiveTask(e, task)}>Archive</button>}
                                                 </td>
                                             </tr>
                                         );
@@ -697,7 +821,7 @@ const BacklogPage: React.FC<BacklogPageProps> = ({ focus, onOpenSearch }) => {
                                 </tbody>
                             </table>
 
-                            {tasks.length === 0 && <p className="empty-state">No tasks in this folder.</p>}
+                            {tasks.length === 0 && <p className="empty-state">No tasks in this view.</p>}
                         </div>
                     </>
                 )}
