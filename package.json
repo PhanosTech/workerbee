@@ -2,7 +2,7 @@
   "name": "workbee",
   "version": "1.0.0",
   "description": "",
-  "main": "electron/main.ts",
+  "main": "main.js",
   "scripts": {
     "dev": "concurrently --kill-others-on-fail --names web,electron \"npm run client\" \"wait-on http://localhost:9229 && npm run electron\"",
     "client": "vite",

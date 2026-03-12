@@ -1,2 +1,6 @@
-require('ts-node').register();
+require('ts-node').register({
+    compilerOptions: {
+        module: "CommonJS"
+    }
+});
 require('./electron/main.ts');
