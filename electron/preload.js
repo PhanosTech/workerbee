@@ -1,5 +1,5 @@
-import { contextBridge, ipcRenderer } from 'electron';
+const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
-    invoke: (channel: string, ...args: any[]) => ipcRenderer.invoke(channel, ...args)
+    invoke: (channel, ...args) => ipcRenderer.invoke(channel, ...args)
 });

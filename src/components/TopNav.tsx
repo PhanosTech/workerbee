@@ -11,7 +11,7 @@ const TopNav: React.FC<TopNavProps> = ({ activeTab, setActiveTab, theme, setThem
     return (
         <header className="topbar">
             <div className="topbar-left">
-                <img src="/logo.png" alt="WorkerBee Logo" className="topbar-logo" />
+                <img src="logo.png" alt="WorkerBee Logo" className="topbar-logo" />
                 <div className="topbar-title">WorkerBee</div>
             </div>
 
