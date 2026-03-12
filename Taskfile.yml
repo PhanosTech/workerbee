@@ -28,7 +28,7 @@ tasks:
         ignore_error: true
       - '{{.NODE}} -e "setTimeout(() => {}, 2000)"'
       - 'task: clean'
-    platforms: [win32]
+    platforms: [windows]
 
   cleanup:
     desc: Clean up build artifacts and node_modules
