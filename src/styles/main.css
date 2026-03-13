@@ -723,6 +723,13 @@ select {
     font-family: inherit;
 }
 
+.controls input,
+.controls select,
+.journal-field select,
+.weekly-controls input {
+    width: auto;
+}
+
 textarea {
     min-height: 100px;
     resize: vertical;
@@ -1236,9 +1243,9 @@ select:focus-visible {
 .kanban-card {
     background: var(--card-bg);
     border: 1px solid var(--border-subtle);
-    border-left: 4px solid var(--border-strong);
-    border-radius: 12px;
-    padding: 10px;
+    border-left: 2px solid var(--border-strong);
+    border-radius: 8px;
+    padding: 6px 8px;
     cursor: grab;
 }
 
@@ -1284,9 +1291,9 @@ select:focus-visible {
 }
 
 .kanban-card-desc {
-    margin: 8px 0;
+    margin: 4px 0;
     opacity: 0.75;
-    font-size: 0.9rem;
+    font-size: 0.85rem;
 }
 
 .task-type-icon {
@@ -1540,6 +1547,7 @@ select:focus-visible {
 .notes-tree-action {
     width: 28px;
     height: 28px;
+    flex-shrink: 0;
     padding: 0;
     margin-right: 0;
     opacity: 0.85;
@@ -1691,6 +1699,20 @@ select:focus-visible {
     justify-content: space-between;
     gap: 10px;
     flex-wrap: wrap;
+}
+
+.journal-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.journal-field {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
 }
 
 .journal-editor {

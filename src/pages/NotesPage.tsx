@@ -377,7 +377,7 @@ const NotesPage: React.FC<NotesPageProps> = ({ focus, onOpenSearch }) => {
                                             <button type="button" className="notes-tree-main" onClick={() => handleSelectTask(task)}>
                                                 <span className="notes-tree-icon" aria-hidden="true">📋</span>
                                                 <span className="notes-tree-title">{task.title}</span>
-                                                <span className="notes-task-meta">{notes.length} notes</span>
+                                                <span className="notes-task-meta">{notes.length}</span>
                                             </button>
                                             <button
                                                 type="button"
