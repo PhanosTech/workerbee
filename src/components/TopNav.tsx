@@ -24,6 +24,13 @@ const TopNav: React.FC<TopNavProps> = ({ activeTab, setActiveTab, theme, setThem
                 </button>
                 <button
                     type="button"
+                    className={`topbar-tab ${activeTab === 'topics' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('topics')}
+                >
+                    Topics
+                </button>
+                <button
+                    type="button"
                     className={`topbar-tab ${activeTab === 'kanban' ? 'active' : ''}`}
                     onClick={() => setActiveTab('kanban')}
                 >
@@ -35,13 +42,6 @@ const TopNav: React.FC<TopNavProps> = ({ activeTab, setActiveTab, theme, setThem
                     onClick={() => setActiveTab('backlog')}
                 >
                     Backlog
-                </button>
-                <button
-                    type="button"
-                    className={`topbar-tab ${activeTab === 'topics' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('topics')}
-                >
-                    Topics
                 </button>
                 <button
                     type="button"
