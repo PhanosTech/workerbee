@@ -293,7 +293,7 @@ const BacklogPage: React.FC<BacklogPageProps> = ({ focus, onOpenSearch }) => {
 
     const handleStartTask = async (e: React.MouseEvent, task: Task) => {
         e.stopPropagation();
-        await api.updateTask(task.id, { status: 'STARTED' });
+        await api.updateTask(task.id, { ...task, status: 'STARTED' });
         if (selectedCategory) loadTasks(selectedCategory.id);
     };
 

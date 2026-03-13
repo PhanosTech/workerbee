@@ -162,7 +162,7 @@ const ActivePage: React.FC<ActivePageProps> = ({ onOpenInBacklog }) => {
             [targetStatus]: nextTargetLane,
         }));
         setDragTaskId(null);
-        await api.updateTask(taskId, { status: targetStatus });
+        await api.updateTask(taskId, { ...movingTask, status: targetStatus });
         await api.reorderTasks(currentStatus, nextSourceLane.map((t) => t.id));
         await api.reorderTasks(targetStatus, nextTargetLane.map((t) => t.id));
         loadBoard();
@@ -201,7 +201,7 @@ const ActivePage: React.FC<ActivePageProps> = ({ onOpenInBacklog }) => {
             [laneStatus]: nextTargetLane,
         }));
         setDragTaskId(null);
-        await api.updateTask(taskId, { status: laneStatus });
+        await api.updateTask(taskId, { ...movingTask, status: laneStatus });
         await api.reorderTasks(sourceStatus, nextSourceLane.map((t) => t.id));
         await api.reorderTasks(laneStatus, nextTargetLane.map((t) => t.id));
         loadBoard();
