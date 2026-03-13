@@ -353,7 +353,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ taskId, onClose, onUpdate }) => {
                 <div className="modal-header">
                     <input
                         className="title-input"
-                        value={task.title}
+                        value={task.title || ''}
                         onChange={(e) => updateTaskDraft({ title: e.target.value })}
                     />
                     <button className="close-btn" onClick={onClose}>&times;</button>

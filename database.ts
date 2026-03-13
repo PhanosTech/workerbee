@@ -842,14 +842,14 @@ export const createTask = async (category_id: number | null, title: string, desc
 
 export const updateTask = async (
     id: number,
-    category_id: number | null,
-    title: string,
-    description: string | null,
-    url: string | null,
-    status: string | null,
-    story_points: any,
-    priority: string | null,
-    task_type: string | null,
+    category_id?: number | null,
+    title?: string,
+    description?: string | null,
+    url?: string | null,
+    status?: string | null,
+    story_points?: any,
+    priority?: string | null,
+    task_type?: string | null,
     due_date?: string | null,
     board_position?: number | null,
     list_position?: number | null
@@ -858,10 +858,11 @@ export const updateTask = async (
         const st = getState();
         const task = st.tasks.find((t) => Number(t.id) === Number(id));
         if (!task) return null;
-        const nextCategoryId = category_id ?? null;
+        
+        const nextCategoryId = category_id !== undefined ? category_id : task.category_id;
         const previousCategoryId = task.category_id ?? null;
 
-        const nextStatus = String(status ?? task.status ?? 'BACKLOG').toUpperCase();
+        const nextStatus = String(status !== undefined ? status : (task.status ?? 'BACKLOG')).toUpperCase();
         const existingStatus = String(task.status ?? 'BACKLOG').toUpperCase();
 
         let started_at = task.started_at;
@@ -912,14 +913,15 @@ export const updateTask = async (
         }
 
         task.category_id = nextCategoryId;
-        task.title = title;
-        task.description = description ?? null;
-        task.url = url ?? null;
-        task.due_date = parseDateOnly(due_date ?? task.due_date ?? null) || null;
-        task.status = nextStatus;
-        task.story_points = normalizeStoryPoints(story_points, task.story_points ?? 0);
-        task.priority = normalizePriority(priority ?? task.priority ?? 'NORMAL');
-        task.task_type = normalizeTaskType(task_type ?? task.task_type ?? 'NONE');
+        if (title !== undefined) task.title = title;
+        if (description !== undefined) task.description = description;
+        if (url !== undefined) task.url = url;
+        if (due_date !== undefined) task.due_date = parseDateOnly(due_date) || null;
+        if (status !== undefined) task.status = nextStatus;
+        if (story_points !== undefined) task.story_points = normalizeStoryPoints(story_points, task.story_points ?? 0);
+        if (priority !== undefined) task.priority = normalizePriority(priority);
+        if (task_type !== undefined) task.task_type = normalizeTaskType(task_type);
+        
         task.board_position = nextBoardPosition;
         task.list_position = nextListPosition;
         task.updated_at = nowIso();
@@ -1615,15 +1617,15 @@ export const createTopic = async (title: string, description: string | null, sta
         return { changes: 1, lastInsertRowid: id };
     });
 };
-export const updateTopic = async (id: number, title: string, description: string | null, status: string | null, tags: string | null) => {
+export const updateTopic = async (id: number, title?: string, description?: string | null, status?: string | null, tags?: string | null) => {
     return withWriteLock(async () => {
         const st = getState();
         const topic = st.topics.find((t) => Number(t.id) === Number(id));
         if (!topic) return { changes: 0 };
-        topic.title = title;
-        topic.description = description || '';
-        topic.status = status || 'BACKLOG';
-        topic.tags = tags || '';
+        if (title !== undefined) topic.title = title;
+        if (description !== undefined) topic.description = description || '';
+        if (status !== undefined) topic.status = status || 'BACKLOG';
+        if (tags !== undefined) topic.tags = tags || '';
         topic.updated_at = nowIso();
         await persist();
         return { changes: 1 };
