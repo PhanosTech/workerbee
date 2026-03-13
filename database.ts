@@ -65,6 +65,8 @@ export interface Note {
     title: string | null;
     content: string | null;
     type: string;
+    created_at: string;
+    updated_at: string;
 }
 
 export interface LabelNote {
@@ -135,7 +137,9 @@ export interface TopicNote {
     content: string | null;
     type: string;
     created_at: string;
-    updated_at?: string;
+    updated_at: string;
+    topic_title?: string | null;
+    topic_status?: string | null;
 }
 
 export interface TaskTopic {
@@ -404,6 +408,12 @@ const migrateInPlace = (st: any): AppState => {
         if (!n.type) n.type = 'work_notes';
     });
 
+    typedState.notes.forEach((n) => {
+        if (!n.created_at) n.created_at = nowIso();
+        if (!n.updated_at) n.updated_at = n.created_at;
+        if (!n.type) n.type = 'rich_text';
+    });
+
     typedState.weekly_notes.forEach((n) => {
         if (!n.week_start) n.week_start = dateOnly(n.created_at || nowIso());
         if (!n.created_at) n.created_at = nowIso();
@@ -440,6 +450,12 @@ const migrateInPlace = (st: any): AppState => {
     typedState.topics.forEach((topic) => {
         if (!Number.isFinite(Number(topic.position))) topic.position = nextTopicPosition;
         nextTopicPosition = Math.max(nextTopicPosition, Number(topic.position ?? 0) + 1);
+    });
+
+    typedState.topic_notes.forEach((n) => {
+        if (!n.created_at) n.created_at = nowIso();
+        if (!n.updated_at) n.updated_at = n.created_at;
+        if (!n.type) n.type = 'rich_text';
     });
 
     // Recompute lastId based on existing data
@@ -1101,6 +1117,28 @@ export const addLog = async (task_id: number, content: string | null) => {
     });
 };
 
+export const updateLog = async (id: number, content: string | null) => {
+    return withWriteLock(async () => {
+        const st = getState();
+        const log = st.logs.find((entry) => Number(entry.id) === Number(id));
+        if (!log) return { changes: 0 };
+        log.content = content ?? null;
+        await persist();
+        return { changes: 1 };
+    });
+};
+
+export const deleteLog = async (id: number) => {
+    return withWriteLock(async () => {
+        const st = getState();
+        const before = st.logs.length;
+        st.logs = st.logs.filter((entry) => Number(entry.id) !== Number(id));
+        const changes = before - st.logs.length;
+        await persist();
+        return { changes };
+    });
+};
+
 // Task notes (different from label_notes)
 export const getTaskNotes = async (taskId: number): Promise<Note[]> => {
     const st = getState();
@@ -1108,7 +1146,10 @@ export const getTaskNotes = async (taskId: number): Promise<Note[]> => {
     return st.notes
         .filter((n) => Number(n.task_id) === id)
         .slice()
-        .sort((a, b) => Number(b.id) - Number(a.id));
+        .sort((a, b) =>
+            String(b.created_at || '').localeCompare(String(a.created_at || '')) ||
+            Number(b.id) - Number(a.id)
+        );
 };
 
 export const getTaskNote = async (id: number): Promise<(Note & {
@@ -1134,12 +1175,15 @@ export const addNote = async (task_id: number, title: string | null, content: st
     return withWriteLock(async () => {
         const st = getState();
         const id = bumpId('notes');
+        const ts = nowIso();
         st.notes.push({
             id,
             task_id: Number(task_id),
             title: title ?? null,
             content: content ?? null,
             type: type ?? 'text',
+            created_at: ts,
+            updated_at: ts,
         });
         await persist();
         return { changes: 1, lastInsertRowid: id };
@@ -1153,6 +1197,7 @@ export const updateNote = async (id: number, title: string | null, content: stri
         if (!note) return { changes: 0 };
         note.title = title ?? null;
         note.content = content ?? null;
+        note.updated_at = nowIso();
         await persist();
         return { changes: 1 };
     });
@@ -1438,7 +1483,7 @@ export const search = async (query: string, limit = 60): Promise<any[]> => {
             title,
             category_id: task.category_id ?? null,
             status: task.status ?? null,
-            updated_at: null,
+            updated_at: note.updated_at ?? note.created_at ?? null,
             snippet: makeSnippet(bodyText || title),
             score: scoreHit(`${taskTitle} ${title}`.trim(), bodyText),
         });
@@ -1730,25 +1775,89 @@ export const addTopicLog = async (topic_id: number, content: string | null) => {
     });
 };
 
+export const updateTopicLog = async (id: number, content: string | null) => {
+    return withWriteLock(async () => {
+        const st = getState();
+        const log = st.topic_logs.find((entry) => Number(entry.id) === Number(id));
+        if (!log) return { changes: 0 };
+        log.content = content ?? null;
+        await persist();
+        return { changes: 1 };
+    });
+};
+
+export const deleteTopicLog = async (id: number) => {
+    return withWriteLock(async () => {
+        const st = getState();
+        const before = st.topic_logs.length;
+        st.topic_logs = st.topic_logs.filter((entry) => Number(entry.id) !== Number(id));
+        const changes = before - st.topic_logs.length;
+        await persist();
+        return { changes };
+    });
+};
+
 // Topic Notes
 export const getTopicNotes = async (topicId: number): Promise<TopicNote[]> => {
     const st = getState();
     const tid = Number(topicId);
     return st.topic_notes
         .filter((tn) => Number(tn.topic_id) === tid)
-        .sort((a, b) => Number(b.id) - Number(a.id));
+        .slice()
+        .sort((a, b) =>
+            String(b.created_at || '').localeCompare(String(a.created_at || '')) ||
+            Number(b.id) - Number(a.id)
+        );
+};
+
+export const getAllTopicNotes = async (filters: {
+    startDate?: string | null;
+    endDate?: string | null;
+    archived?: TaskArchivedMode | boolean | string | null;
+} = {}): Promise<TopicNote[]> => {
+    const st = getState();
+    const start = parseDateOnly(filters.startDate);
+    const end = parseDateOnly(filters.endDate);
+    const archivedMode = normalizeArchivedMode(filters.archived);
+    const topicById = new Map(st.topics.map((topic) => [Number(topic.id), topic]));
+
+    return st.topic_notes
+        .map((note) => {
+            const topic = topicById.get(Number(note.topic_id));
+            return {
+                ...note,
+                topic_title: topic?.title ?? null,
+                topic_status: topic?.status ?? null,
+            };
+        })
+        .filter((note) => {
+            const topic = topicById.get(Number(note.topic_id));
+            if (!topic) return false;
+            if (archivedMode === 'exclude' && topic.archived) return false;
+            if (archivedMode === 'only' && !topic.archived) return false;
+            const createdDate = parseDateOnly(note.created_at);
+            if (start && (!createdDate || createdDate < start)) return false;
+            if (end && (!createdDate || createdDate > end)) return false;
+            return true;
+        })
+        .sort((a, b) =>
+            String(b.created_at || '').localeCompare(String(a.created_at || '')) ||
+            Number(b.id) - Number(a.id)
+        );
 };
 export const addTopicNote = async (topic_id: number, title: string | null, content: string | null, type: string) => {
     return withWriteLock(async () => {
         const st = getState();
         const id = bumpId('topic_notes');
+        const ts = nowIso();
         st.topic_notes.push({
             id,
             topic_id: Number(topic_id),
             title: title ?? null,
             content: content ?? null,
             type: type ?? 'text',
-            created_at: nowIso(),
+            created_at: ts,
+            updated_at: ts,
         });
         await persist();
         return { changes: 1, lastInsertRowid: id };

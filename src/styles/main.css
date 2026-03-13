@@ -1103,6 +1103,12 @@ select:focus-visible {
     font-size: 0.88rem;
 }
 
+.note-row-meta {
+    margin-top: 6px;
+    opacity: 0.62;
+    font-size: 0.76rem;
+}
+
 .notes-empty {
     padding: 12px;
     opacity: 0.6;
@@ -1115,8 +1121,14 @@ select:focus-visible {
     gap: 10px;
 }
 
-.log-form button {
-    align-self: flex-end;
+.log-form-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+.log-form-actions button {
     margin-right: 0;
 }
 
@@ -1126,6 +1138,25 @@ select:focus-visible {
     border: 1px solid var(--border-subtle);
     border-radius: 12px;
     padding: 12px;
+}
+
+.log-entry.editing {
+    border-color: var(--accent-color);
+    box-shadow: inset 0 0 0 1px var(--accent-color);
+}
+
+.log-entry-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 8px;
+}
+
+.log-entry-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
 }
 
 .log-time,
@@ -1464,6 +1495,16 @@ select:focus-visible {
     overflow: hidden;
 }
 
+.topic-notes-workspace {
+    height: 100%;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 320px minmax(0, 1fr);
+    border: 1px solid var(--border-subtle);
+    border-radius: 14px;
+    overflow: hidden;
+}
+
 .notes-sidebar {
     min-height: 0;
     display: flex;
@@ -1479,6 +1520,27 @@ select:focus-visible {
 
 .notes-sidebar-content {
     padding: 10px;
+}
+
+.notes-date-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 10px;
+}
+
+.notes-date-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 0.76rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.notes-date-field input {
+    min-width: 140px;
 }
 
 .notes-tree-row {
@@ -1563,6 +1625,41 @@ select:focus-visible {
     padding: 8px 10px;
     opacity: 0.65;
     font-style: italic;
+}
+
+.topic-notes-list li {
+    padding: 0;
+    overflow: hidden;
+}
+
+.topic-note-list-item {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    padding: 12px;
+    border: none;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    margin-right: 0;
+}
+
+.topic-note-list-item:hover,
+.topic-note-list-item.active {
+    background: var(--control-bg);
+}
+
+.topic-notes-empty {
+    display: grid;
+    gap: 10px;
+    padding: 12px;
+}
+
+.topic-notes-empty p {
+    margin: 0;
+    opacity: 0.72;
 }
 
 .notes-tree-task .notes-task-meta {
@@ -1732,7 +1829,8 @@ select:focus-visible {
         grid-template-columns: 1fr;
     }
 
-    .notes-page {
+    .notes-page,
+    .topic-notes-workspace {
         grid-template-columns: 1fr;
     }
 }

@@ -109,4 +109,45 @@ describe('database.ts test suite', () => {
         expect(renamedToFiles).toContain('tasks.json');
         expect(renamedToFiles).toContain('meta.json');
     });
+
+    it('should timestamp task notes and allow task worklog edits', async () => {
+        await db.init();
+
+        const { lastInsertRowid: taskId } = await db.createTask(null, 'Timestamped Task', null, null);
+        const { lastInsertRowid: noteId } = await db.addNote(Number(taskId), 'Inbox', '<p>Saved note</p>', 'rich_text');
+        const createdNote = await db.getTaskNote(Number(noteId));
+
+        expect(createdNote?.created_at).toBeDefined();
+        expect(createdNote?.updated_at).toBeDefined();
+
+        const { lastInsertRowid: logId } = await db.addLog(Number(taskId), 'Initial work');
+        await db.updateLog(Number(logId), 'Edited work');
+        let logs = await db.getTaskLogs(Number(taskId));
+        expect(logs.find((log) => log.id === Number(logId))?.content).toBe('Edited work');
+
+        await db.deleteLog(Number(logId));
+        logs = await db.getTaskLogs(Number(taskId));
+        expect(logs.find((log) => log.id === Number(logId))).toBeUndefined();
+    });
+
+    it('should return dated topic notes and support topic worklog edits', async () => {
+        await db.init();
+
+        const { lastInsertRowid: topicId } = await db.createTopic('Email Thread', 'Follow-up thread', 'BACKLOG', 'email');
+        const { lastInsertRowid: noteId } = await db.addTopicNote(Number(topicId), 'Thread recap', '<p>Summary</p>', 'rich_text');
+        const topicNotes = await db.getAllTopicNotes();
+        const createdNote = topicNotes.find((note) => note.id === Number(noteId));
+
+        expect(createdNote?.created_at).toBeDefined();
+        expect(createdNote?.topic_title).toBe('Email Thread');
+
+        const { lastInsertRowid: logId } = await db.addTopicLog(Number(topicId), 'Logged work');
+        await db.updateTopicLog(Number(logId), 'Updated topic work');
+        let logs = await db.getTopicLogs(Number(topicId));
+        expect(logs.find((log) => log.id === Number(logId))?.content).toBe('Updated topic work');
+
+        await db.deleteTopicLog(Number(logId));
+        logs = await db.getTopicLogs(Number(topicId));
+        expect(logs.find((log) => log.id === Number(logId))).toBeUndefined();
+    });
 });

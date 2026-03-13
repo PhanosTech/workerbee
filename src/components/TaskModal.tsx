@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useEffect, useRef, FormEvent, DragEvent, KeyboardEvent } from 'react';
 import { api, Task, Todo, Log, Note, Category, Topic } from '../api';
 import TiptapEditor from './TiptapEditor';
+import { formatDateTime, htmlToPlainText, isEmptyHtml, normalizeNoteContent } from '../utils/noteUtils';
 
 const moveBefore = <T extends { id: number | string }>(items: T[], movingId: number | string, targetId: number | string): T[] => {
     const fromIndex = items.findIndex((t) => t.id === movingId);
@@ -38,6 +39,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ taskId, onClose, onUpdate }) => {
     const [categories, setCategories] = useState<Category[]>([]);
     const [newTodo, setNewTodo] = useState('');
     const [newLog, setNewLog] = useState('');
+    const [editingLogId, setEditingLogId] = useState<number | null>(null);
     const [editingTodoId, setEditingTodoId] = useState<number | null>(null);
     const [editingTodoText, setEditingTodoText] = useState('');
     const [dragTodoId, setDragTodoId] = useState<number | null>(null);
@@ -56,6 +58,8 @@ const TaskModal: React.FC<TaskModalProps> = ({ taskId, onClose, onUpdate }) => {
 
     useEffect(() => {
         setTaskDirty(false);
+        setNewLog('');
+        setEditingLogId(null);
         loadTaskData({ preserveDraft: false });
         loadAllTopics();
         loadTaskTopics();
@@ -251,37 +255,35 @@ const TaskModal: React.FC<TaskModalProps> = ({ taskId, onClose, onUpdate }) => {
         await api.reorderTodos(task.id, next.map((t) => t.id));
     };
 
+    const handleStartEditLog = (log: Log) => {
+        setEditingLogId(log.id);
+        setNewLog(log.content || '');
+    };
+
+    const handleCancelEditLog = () => {
+        setEditingLogId(null);
+        setNewLog('');
+    };
+
     const handleAddLog = async (e: FormEvent) => {
         e.preventDefault();
-        if (!task || !newLog) return;
-        await api.addLog(task.id, newLog);
-        setNewLog('');
+        const draft = newLog.trim();
+        if (!task || !draft) return;
+        if (editingLogId) {
+            await api.updateLog(editingLogId, draft);
+        } else {
+            await api.addLog(task.id, draft);
+        }
+        handleCancelEditLog();
         loadTaskData();
     };
 
-    const htmlToPlainText = (html: string | null | undefined) =>
-        (html || '')
-            .replace(/<[^>]*>/g, ' ')
-            .replace(/&nbsp;/gi, ' ')
-            .replace(/\s+/g, ' ')
-            .trim();
-
-    const escapeHtml = (text: string) =>
-        (text || '')
-            .replaceAll('&', '&amp;')
-            .replaceAll('<', '&lt;')
-            .replaceAll('>', '&gt;')
-            .replaceAll('"', '&quot;')
-            .replaceAll("'", '&#39;');
-
-    const normalizeNoteContent = (content: string | null | undefined) => {
-        const trimmed = (content || '').trim();
-        if (!trimmed) return '';
-        if (trimmed.startsWith('<')) return content || '';
-        return `<p>${escapeHtml(trimmed).replaceAll('\n', '<br />')}</p>`;
+    const handleDeleteLog = async (log: Log) => {
+        if (!confirm('Delete this work log?')) return;
+        await api.deleteLog(log.id);
+        if (editingLogId === log.id) handleCancelEditLog();
+        loadTaskData();
     };
-
-    const isEmptyHtml = (html: string) => htmlToPlainText(html).length === 0;
 
     const openNoteModal = (note: Note | null) => {
         setActiveNote(note || null);
@@ -592,20 +594,39 @@ const TaskModal: React.FC<TaskModalProps> = ({ taskId, onClose, onUpdate }) => {
                             </div>
                             <div className="task-panel-scroll" role="region" aria-label="Work log">
                                 {logs.map((log) => (
-                                    <div key={log.id} className="log-entry">
-                                        <div className="log-time">{new Date(log.timestamp).toLocaleString()}</div>
-                                        <div className="log-content">{log.content}</div>
+                                    <div key={log.id} className={`log-entry ${editingLogId === log.id ? 'editing' : ''}`}>
+                                        <div className="log-entry-header">
+                                            <div className="log-time">{formatDateTime(log.timestamp)}</div>
+                                            <div className="log-entry-actions">
+                                                <button type="button" className="link-btn" onClick={() => handleStartEditLog(log)}>
+                                                    Edit
+                                                </button>
+                                                <button type="button" className="link-btn danger-link" onClick={() => handleDeleteLog(log)}>
+                                                    Delete
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div className="log-content">{log.content || 'Empty work log'}</div>
                                     </div>
                                 ))}
                                 {logs.length === 0 && <div className="muted">No work logs yet.</div>}
                             </div>
                             <form onSubmit={handleAddLog} className="task-panel-form log-form">
                                 <textarea
-                                    placeholder="What did you work on?"
+                                    placeholder={editingLogId ? 'Update this work log…' : 'What did you work on?'}
                                     value={newLog}
                                     onChange={(e) => setNewLog(e.target.value)}
                                 />
-                                <button type="submit">Log Work</button>
+                                <div className="log-form-actions">
+                                    {editingLogId ? (
+                                        <button type="button" onClick={handleCancelEditLog}>
+                                            Cancel
+                                        </button>
+                                    ) : null}
+                                    <button type="submit" disabled={!newLog.trim()}>
+                                        {editingLogId ? 'Save Edit' : 'Log Work'}
+                                    </button>
+                                </div>
                             </form>
                         </section>
                     </div>
@@ -628,6 +649,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ taskId, onClose, onUpdate }) => {
                                             <div className="note-row-preview">
                                                 {htmlToPlainText(note.content).slice(0, 90) || 'Empty note'}
                                             </div>
+                                            <div className="note-row-meta">{formatDateTime(note.created_at)}</div>
                                         </li>
                                     ))}
                                     {notes.length === 0 && <li className="notes-empty">No task notes yet.</li>}
@@ -657,6 +679,11 @@ const TaskModal: React.FC<TaskModalProps> = ({ taskId, onClose, onUpdate }) => {
                 >
                     <div className="modal-content note-modal">
                         <h3>{activeNote ? 'Edit Note' : 'New Note'}</h3>
+                        {activeNote?.created_at ? (
+                            <div className="muted" style={{ marginBottom: 10 }}>
+                                Created {formatDateTime(activeNote.created_at)}
+                            </div>
+                        ) : null}
                         <input
                             type="text"
                             placeholder="Title"

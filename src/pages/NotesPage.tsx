@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import TiptapEditor from '../components/TiptapEditor';
-import { api, Category, Note, Task, TaskNote } from '../api';
+import { api, Category, Note, Task, TaskNote, TopicNote } from '../api';
 import { NotesFocus } from '../App';
+import { formatDateTime, htmlToPlainText, normalizeNoteContent } from '../utils/noteUtils';
 
 type NotesFilter = 'active' | 'done' | 'archived';
+type NotesSource = 'tasks' | 'topics';
 
 const EXPANDED_FOLDERS_STORAGE_KEY = 'wb-notes-expanded-folders-v2';
 const TASK_FILTER_STORAGE_KEY = 'wb-notes-task-filter-v1';
@@ -27,15 +29,9 @@ const sortTasks = (a: Task, b: Task) => {
     return String(a.title || '').localeCompare(String(b.title || ''), undefined, { sensitivity: 'base' });
 };
 
-const htmlToPlainText = (html: string | null | undefined) =>
-    String(html || '')
-        .replace(/<[^>]*>/g, ' ')
-        .replace(/&nbsp;/gi, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-
 const toTaskNote = (note: Note, task: Task): TaskNote => ({
     ...note,
+    content: normalizeNoteContent(note.content),
     category_id: task.category_id ?? null,
     task_title: task.title ?? null,
     task_status: task.status ?? null,
@@ -70,6 +66,7 @@ const NotesPage: React.FC<NotesPageProps> = ({ focus, onOpenSearch }) => {
         const raw = window.localStorage.getItem(TASK_FILTER_STORAGE_KEY);
         return raw === 'done' || raw === 'archived' ? raw : 'active';
     });
+    const [notesSource, setNotesSource] = useState<NotesSource>('tasks');
     const [tasksByCategory, setTasksByCategory] = useState<Record<number, Task[]>>({});
     const [taskNotesMap, setTaskNotesMap] = useState<Record<number, TaskNote[]>>({});
     const [loadingCategories, setLoadingCategories] = useState<Set<number>>(new Set());
@@ -77,11 +74,20 @@ const NotesPage: React.FC<NotesPageProps> = ({ focus, onOpenSearch }) => {
     const [selectedNote, setSelectedNote] = useState<TaskNote | null>(null);
     const [noteDirty, setNoteDirty] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
+    const [topicNotes, setTopicNotes] = useState<TopicNote[]>([]);
+    const [selectedTopicNote, setSelectedTopicNote] = useState<TopicNote | null>(null);
+    const [topicNoteDirty, setTopicNoteDirty] = useState(false);
+    const [topicNotesLoading, setTopicNotesLoading] = useState(false);
+    const [topicStartDate, setTopicStartDate] = useState('');
+    const [topicEndDate, setTopicEndDate] = useState('');
 
     const noteDirtyRef = useRef(false);
     const selectedNoteRef = useRef<TaskNote | null>(null);
     const autoSaveTimerRef = useRef<number | null>(null);
     const fetchSeqRef = useRef<Map<number, number>>(new Map());
+    const topicNoteDirtyRef = useRef(false);
+    const selectedTopicNoteRef = useRef<TopicNote | null>(null);
+    const topicNoteAutoSaveTimerRef = useRef<number | null>(null);
 
     const categoryById = useMemo(() => {
         const map = new Map<number, Category>();
@@ -116,6 +122,14 @@ const NotesPage: React.FC<NotesPageProps> = ({ focus, onOpenSearch }) => {
     useEffect(() => {
         selectedNoteRef.current = selectedNote;
     }, [selectedNote]);
+
+    useEffect(() => {
+        topicNoteDirtyRef.current = topicNoteDirty;
+    }, [topicNoteDirty]);
+
+    useEffect(() => {
+        selectedTopicNoteRef.current = selectedTopicNote;
+    }, [selectedTopicNote]);
 
     useEffect(() => {
         try {
@@ -199,6 +213,32 @@ const NotesPage: React.FC<NotesPageProps> = ({ focus, onOpenSearch }) => {
         }
     };
 
+    const fetchTopicNotes = async () => {
+        setTopicNotesLoading(true);
+        try {
+            const data = await api.getAllTopicNotes({
+                startDate: topicStartDate || undefined,
+                endDate: topicEndDate || undefined,
+            });
+            const normalized = (data || []).map((note) => ({
+                ...note,
+                content: normalizeNoteContent(note.content),
+            }));
+            setTopicNotes(normalized);
+            setSelectedTopicNote((prev) => {
+                if (!normalized.length) return null;
+                const targetId = prev?.id ?? normalized[0].id;
+                return normalized.find((note) => note.id === targetId) || normalized[0];
+            });
+        } catch (err) {
+            console.error(err);
+            setTopicNotes([]);
+            setSelectedTopicNote(null);
+        } finally {
+            setTopicNotesLoading(false);
+        }
+    };
+
     useEffect(() => {
         setTasksByCategory({});
         setTaskNotesMap({});
@@ -208,6 +248,12 @@ const NotesPage: React.FC<NotesPageProps> = ({ focus, onOpenSearch }) => {
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [taskFilter]);
+
+    useEffect(() => {
+        if (notesSource !== 'topics') return;
+        void fetchTopicNotes();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [notesSource, topicStartDate, topicEndDate]);
 
     const toggleCategory = (categoryId: number) => {
         const isOpen = expandedCategories.has(categoryId);
@@ -226,6 +272,22 @@ const NotesPage: React.FC<NotesPageProps> = ({ focus, onOpenSearch }) => {
             return next;
         });
         fetchCategoryContent(categoryId);
+    };
+
+    const handleSaveNote = async (note: TaskNote | null = selectedNoteRef.current) => {
+        if (!note) return;
+        try {
+            await api.updateNote(note.id, note.title, note.content);
+            const nextNote = { ...note, updated_at: new Date().toISOString() };
+            setTaskNotesMap((prev) => ({
+                ...prev,
+                [note.task_id]: (prev[note.task_id] || []).map((entry) => (entry.id === note.id ? nextNote : entry)),
+            }));
+            setSelectedNote((prev) => (prev?.id === note.id ? nextNote : prev));
+            setNoteDirty(false);
+        } catch (err) {
+            console.error(err);
+        }
     };
 
     const handleSelectNote = (note: TaskNote | null) => {
@@ -263,26 +325,15 @@ const NotesPage: React.FC<NotesPageProps> = ({ focus, onOpenSearch }) => {
             const result = await api.addNote(task.id, '', '', 'rich_text');
             const note = await api.getNote(Number(result.lastInsertRowid));
             if (!note) return;
+            const normalizedNote = {
+                ...note,
+                content: normalizeNoteContent(note.content),
+            };
             setTaskNotesMap((prev) => ({
                 ...prev,
-                [task.id]: [note, ...(prev[task.id] || [])],
+                [task.id]: [normalizedNote, ...(prev[task.id] || [])],
             }));
-            handleSelectNote(note);
-        } catch (err) {
-            console.error(err);
-        }
-    };
-
-    const handleSaveNote = async (note: TaskNote | null = selectedNoteRef.current) => {
-        if (!note) return;
-        try {
-            await api.updateNote(note.id, note.title, note.content);
-            setTaskNotesMap((prev) => ({
-                ...prev,
-                [note.task_id]: (prev[note.task_id] || []).map((entry) => (entry.id === note.id ? note : entry)),
-            }));
-            setSelectedNote((prev) => (prev?.id === note.id ? note : prev));
-            setNoteDirty(false);
+            handleSelectNote(normalizedNote);
         } catch (err) {
             console.error(err);
         }
@@ -308,11 +359,8 @@ const NotesPage: React.FC<NotesPageProps> = ({ focus, onOpenSearch }) => {
         try {
             const taskId = selectedNote.task_id;
             await api.deleteNote(selectedNote.id);
-            setTaskNotesMap((prev) => {
-                const nextNotes = (prev[taskId] || []).filter((note) => note.id !== selectedNote.id);
-                return { ...prev, [taskId]: nextNotes };
-            });
             const remaining = (taskNotesMap[taskId] || []).filter((note) => note.id !== selectedNote.id);
+            setTaskNotesMap((prev) => ({ ...prev, [taskId]: remaining }));
             setSelectedNote(remaining[0] || null);
             setSelectedTaskId(taskId);
             setNoteDirty(false);
@@ -321,9 +369,70 @@ const NotesPage: React.FC<NotesPageProps> = ({ focus, onOpenSearch }) => {
         }
     };
 
+    const handleSaveTopicNote = async (note: TopicNote | null = selectedTopicNoteRef.current) => {
+        if (!note?.id) return;
+        try {
+            await api.updateTopicNote(note.id, note.title ?? null, note.content ?? null);
+            const nextNote = { ...note, updated_at: new Date().toISOString() };
+            setTopicNotes((prev) => prev.map((entry) => (entry.id === note.id ? nextNote : entry)));
+            setSelectedTopicNote((prev) => (prev?.id === note.id ? nextNote : prev));
+            setTopicNoteDirty(false);
+        } catch (err) {
+            console.error(err);
+        }
+    };
+
+    const handleSelectTopicNote = (note: TopicNote | null) => {
+        if (topicNoteDirtyRef.current && selectedTopicNoteRef.current) {
+            void handleSaveTopicNote(selectedTopicNoteRef.current);
+        }
+        setSelectedTopicNote(note);
+        setTopicNoteDirty(false);
+    };
+
+    useEffect(() => {
+        if (!topicNoteDirty || !selectedTopicNote?.id) return;
+        if (topicNoteAutoSaveTimerRef.current) window.clearTimeout(topicNoteAutoSaveTimerRef.current);
+        topicNoteAutoSaveTimerRef.current = window.setTimeout(() => {
+            void handleSaveTopicNote(selectedTopicNote);
+        }, 700);
+        return () => {
+            if (topicNoteAutoSaveTimerRef.current) {
+                window.clearTimeout(topicNoteAutoSaveTimerRef.current);
+                topicNoteAutoSaveTimerRef.current = null;
+            }
+        };
+    }, [topicNoteDirty, selectedTopicNote?.id, selectedTopicNote?.title, selectedTopicNote?.content]);
+
+    const handleDeleteTopicNote = async () => {
+        if (!selectedTopicNote?.id) return;
+        if (!window.confirm('Delete this topic note?')) return;
+        try {
+            await api.deleteTopicNote(selectedTopicNote.id);
+            const remaining = topicNotes.filter((note) => note.id !== selectedTopicNote.id);
+            setTopicNotes(remaining);
+            setSelectedTopicNote(remaining[0] || null);
+            setTopicNoteDirty(false);
+        } catch (err) {
+            console.error(err);
+        }
+    };
+
+    const handleSwitchSource = (nextSource: NotesSource) => {
+        if (nextSource === notesSource) return;
+        if (notesSource === 'tasks' && noteDirtyRef.current && selectedNoteRef.current) {
+            void handleSaveNote(selectedNoteRef.current);
+        }
+        if (notesSource === 'topics' && topicNoteDirtyRef.current && selectedTopicNoteRef.current) {
+            void handleSaveTopicNote(selectedTopicNoteRef.current);
+        }
+        setNotesSource(nextSource);
+    };
+
     useEffect(() => {
         const noteId = Number(focus?.noteId);
         if (!noteId) return;
+        setNotesSource('tasks');
         (async () => {
             const note = await api.getNote(noteId);
             if (!note) return;
@@ -416,10 +525,10 @@ const NotesPage: React.FC<NotesPageProps> = ({ focus, onOpenSearch }) => {
 
     return (
         <div className="notes-page">
-            <aside className="notes-sidebar" aria-label="Task note folders">
+            <aside className="notes-sidebar" aria-label="Notes navigation">
                 <div className="notes-sidebar-header">
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                        <h2 style={{ margin: 0 }}>Task Notes</h2>
+                        <h2 style={{ margin: 0 }}>Notes</h2>
                         <button
                             type="button"
                             className="icon-btn"
@@ -431,71 +540,174 @@ const NotesPage: React.FC<NotesPageProps> = ({ focus, onOpenSearch }) => {
                         </button>
                     </div>
                     <div className="notes-filters" style={{ marginTop: 10 }}>
-                        <button type="button" className={`filter-btn ${taskFilter === 'active' ? 'active' : ''}`} onClick={() => setTaskFilter('active')}>
-                            Backlog + Doing
+                        <button type="button" className={`filter-btn ${notesSource === 'tasks' ? 'active' : ''}`} onClick={() => handleSwitchSource('tasks')}>
+                            Task Notes
                         </button>
-                        <button type="button" className={`filter-btn ${taskFilter === 'done' ? 'active' : ''}`} onClick={() => setTaskFilter('done')}>
-                            Done
-                        </button>
-                        <button type="button" className={`filter-btn ${taskFilter === 'archived' ? 'active' : ''}`} onClick={() => setTaskFilter('archived')}>
-                            Archived
+                        <button type="button" className={`filter-btn ${notesSource === 'topics' ? 'active' : ''}`} onClick={() => handleSwitchSource('topics')}>
+                            Topic Notes
                         </button>
                     </div>
+
+                    {notesSource === 'tasks' ? (
+                        <div className="notes-filters" style={{ marginTop: 10 }}>
+                            <button type="button" className={`filter-btn ${taskFilter === 'active' ? 'active' : ''}`} onClick={() => setTaskFilter('active')}>
+                                Backlog + Doing
+                            </button>
+                            <button type="button" className={`filter-btn ${taskFilter === 'done' ? 'active' : ''}`} onClick={() => setTaskFilter('done')}>
+                                Done
+                            </button>
+                            <button type="button" className={`filter-btn ${taskFilter === 'archived' ? 'active' : ''}`} onClick={() => setTaskFilter('archived')}>
+                                Archived
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="notes-date-filters" style={{ marginTop: 10 }}>
+                            <label className="notes-date-field">
+                                <span>From</span>
+                                <input type="date" value={topicStartDate} onChange={(e) => setTopicStartDate(e.target.value)} />
+                            </label>
+                            <label className="notes-date-field">
+                                <span>To</span>
+                                <input type="date" value={topicEndDate} onChange={(e) => setTopicEndDate(e.target.value)} />
+                            </label>
+                            {(topicStartDate || topicEndDate) ? (
+                                <button type="button" className="link-btn" onClick={() => { setTopicStartDate(''); setTopicEndDate(''); }}>
+                                    Clear
+                                </button>
+                            ) : null}
+                        </div>
+                    )}
                 </div>
+
                 <div className="notes-sidebar-content">
-                    {isLoading ? <div className="notes-tree-empty">Loading…</div> : renderCategoryTree(null)}
+                    {notesSource === 'tasks' ? (
+                        isLoading ? <div className="notes-tree-empty">Loading…</div> : renderCategoryTree(null)
+                    ) : topicNotesLoading ? (
+                        <div className="notes-tree-empty">Loading topic notes…</div>
+                    ) : topicNotes.length === 0 ? (
+                        <div className="notes-tree-empty">No topic notes in this date range.</div>
+                    ) : (
+                        <ul className="notes-list topic-notes-list">
+                            {topicNotes.map((note) => (
+                                <li key={note.id}>
+                                    <button
+                                        type="button"
+                                        className={`topic-note-list-item ${selectedTopicNote?.id === note.id ? 'active' : ''}`}
+                                        onClick={() => handleSelectTopicNote(note)}
+                                    >
+                                        <div className="note-row-title">{note.title?.trim() || '(Untitled note)'}</div>
+                                        <div className="note-row-meta">
+                                            {(note.topic_title || 'Topic')} · {formatDateTime(note.created_at)}
+                                        </div>
+                                        <div className="note-row-preview">
+                                            {htmlToPlainText(note.content).slice(0, 120) || 'Empty note'}
+                                        </div>
+                                    </button>
+                                </li>
+                            ))}
+                        </ul>
+                    )}
                 </div>
             </aside>
 
-            <section className="notes-editor-area" aria-label="Task note editor">
-                {selectedNote ? (
+            <section className="notes-editor-area" aria-label="Notes editor">
+                {notesSource === 'tasks' ? (
+                    selectedNote ? (
+                        <>
+                            <header className="note-header">
+                                <div className="note-header-meta">
+                                    <div className="muted">
+                                        {selectedNote.task_title || 'Task note'} · {selectedNote.task_status || 'Unknown'} · Created {formatDateTime(selectedNote.created_at)}
+                                    </div>
+                                    <input
+                                        className="note-title-input"
+                                        value={selectedNote.title || ''}
+                                        onChange={(e) => {
+                                            setSelectedNote((prev) => prev ? { ...prev, title: e.target.value } : prev);
+                                            setNoteDirty(true);
+                                        }}
+                                        onBlur={() => void handleSaveNote()}
+                                        placeholder="Note title"
+                                    />
+                                </div>
+                                <div className="note-header-actions">
+                                    <button type="button" className="link-btn danger-link" onClick={handleDeleteNote}>
+                                        Delete
+                                    </button>
+                                </div>
+                            </header>
+                            <div className="note-editor-wrapper">
+                                <TiptapEditor
+                                    content={selectedNote.content || ''}
+                                    onChange={(html) => {
+                                        setSelectedNote((prev) => prev ? ({ ...prev, content: html }) : prev);
+                                        setNoteDirty(true);
+                                    }}
+                                    onRequestSave={handleSaveNote}
+                                    placeholder="Write task notes here…"
+                                />
+                            </div>
+                        </>
+                    ) : selectedTask ? (
+                        <div className="notes-empty-state">
+                            <div className="notes-empty-icon" aria-hidden="true">📝</div>
+                            <p>{selectedTask.title} does not have a note yet.</p>
+                            <button type="button" className="primary-btn" onClick={() => handleCreateNote(selectedTask)}>
+                                Create First Note
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="notes-empty-state">
+                            <div className="notes-empty-icon" aria-hidden="true">📝</div>
+                            <p>Select a task note from the sidebar.</p>
+                        </div>
+                    )
+                ) : selectedTopicNote ? (
                     <>
                         <header className="note-header">
                             <div className="note-header-meta">
                                 <div className="muted">
-                                    {selectedNote.task_title || 'Task note'} · {selectedNote.task_status || 'Unknown'}
+                                    {selectedTopicNote.topic_title || 'Topic note'} · {selectedTopicNote.topic_status || 'Unknown'} · Created {formatDateTime(selectedTopicNote.created_at)}
                                 </div>
                                 <input
                                     className="note-title-input"
-                                    value={selectedNote.title || ''}
+                                    value={selectedTopicNote.title || ''}
                                     onChange={(e) => {
-                                        setSelectedNote((prev) => prev ? { ...prev, title: e.target.value } : prev);
-                                        setNoteDirty(true);
+                                        setSelectedTopicNote((prev) => prev ? { ...prev, title: e.target.value } : prev);
+                                        setTopicNotes((prev) =>
+                                            prev.map((note) => (note.id === selectedTopicNote.id ? { ...note, title: e.target.value } : note))
+                                        );
+                                        setTopicNoteDirty(true);
                                     }}
-                                    onBlur={() => void handleSaveNote()}
+                                    onBlur={() => void handleSaveTopicNote()}
                                     placeholder="Note title"
                                 />
                             </div>
                             <div className="note-header-actions">
-                                <button type="button" className="link-btn danger-link" onClick={handleDeleteNote}>
+                                <button type="button" className="link-btn danger-link" onClick={handleDeleteTopicNote}>
                                     Delete
                                 </button>
                             </div>
                         </header>
                         <div className="note-editor-wrapper">
                             <TiptapEditor
-                                content={selectedNote.content || ''}
+                                content={selectedTopicNote.content || ''}
                                 onChange={(html) => {
-                                    setSelectedNote((prev) => prev ? ({ ...prev, content: html }) : prev);
-                                    setNoteDirty(true);
+                                    setSelectedTopicNote((prev) => prev ? ({ ...prev, content: html }) : prev);
+                                    setTopicNotes((prev) =>
+                                        prev.map((note) => (note.id === selectedTopicNote.id ? { ...note, content: html } : note))
+                                    );
+                                    setTopicNoteDirty(true);
                                 }}
-                                onRequestSave={handleSaveNote}
-                                placeholder="Write task notes here…"
+                                onRequestSave={handleSaveTopicNote}
+                                placeholder="Review and refine the saved email thread here…"
                             />
                         </div>
                     </>
-                ) : selectedTask ? (
-                    <div className="notes-empty-state">
-                        <div className="notes-empty-icon" aria-hidden="true">📝</div>
-                        <p>{selectedTask.title} does not have a note yet.</p>
-                        <button type="button" className="primary-btn" onClick={() => handleCreateNote(selectedTask)}>
-                            Create First Note
-                        </button>
-                    </div>
                 ) : (
                     <div className="notes-empty-state">
                         <div className="notes-empty-icon" aria-hidden="true">📝</div>
-                        <p>Select a task note from the sidebar.</p>
+                        <p>Select a topic note from the sidebar.</p>
                     </div>
                 )}
             </section>

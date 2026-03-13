@@ -67,6 +67,8 @@ export interface Note {
     title: string | null;
     content: string | null;
     type: string;
+    created_at: string;
+    updated_at: string;
 }
 
 export interface LabelNote {
@@ -142,7 +144,9 @@ export interface TopicNote {
     content: string | null;
     type: string;
     created_at: string;
-    updated_at?: string;
+    updated_at: string;
+    topic_title?: string | null;
+    topic_status?: string | null;
 }
 
 export interface SearchResult {
@@ -234,6 +238,8 @@ export const api = {
         invoke('reorderTodos', { taskId, ordered_ids }),
     deleteTodo: (id: number): Promise<ChangesResponse> => invoke('deleteTodo', id),
     addLog: (taskId: number, content: string | null): Promise<ChangesResponse> => invoke('addLog', { taskId, content }),
+    updateLog: (id: number, content: string | null): Promise<ChangesResponse> => invoke('updateLog', { id, content }),
+    deleteLog: (id: number): Promise<ChangesResponse> => invoke('deleteLog', id),
     addNote: (taskId: number, title: string | null, content: string | null, type: string): Promise<ChangesResponse> => 
         invoke('addNote', { taskId, title, content, type }),
     updateNote: (id: number, title: string | null, content: string | null): Promise<ChangesResponse> => 
@@ -292,7 +298,11 @@ export const api = {
     deleteTopicTodo: (id: number): Promise<ChangesResponse> => invoke('deleteTopicTodo', id),
     getTopicLogs: (id: number): Promise<TopicLog[]> => invoke('getTopicLogs', id),
     addTopicLog: (id: number, content: string | null): Promise<ChangesResponse> => invoke('addTopicLog', { id, content }),
+    updateTopicLog: (id: number, content: string | null): Promise<ChangesResponse> => invoke('updateTopicLog', { id, content }),
+    deleteTopicLog: (id: number): Promise<ChangesResponse> => invoke('deleteTopicLog', id),
     getTopicNotes: (id: number): Promise<TopicNote[]> => invoke('getTopicNotes', id),
+    getAllTopicNotes: (filters: { startDate?: string | null; endDate?: string | null; archived?: 'exclude' | 'only' | 'include' | boolean | string } = {}): Promise<TopicNote[]> =>
+        invoke('getAllTopicNotes', filters),
     addTopicNote: (id: number, title: string | null, content: string | null, type: string): Promise<ChangesResponse> => 
         invoke('addTopicNote', { id, title, content, type }),
     updateTopicNote: (id: number, title: string | null, content: string | null): Promise<ChangesResponse> => 

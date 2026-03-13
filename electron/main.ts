@@ -119,6 +119,8 @@ function setupIpcHandlers() {
     ipcMain.handle('reorderTodos', (_e: IpcMainInvokeEvent, { taskId, ordered_ids }: { taskId: number, ordered_ids: (number | string)[] }) => db.reorderTodosForTask(taskId, ordered_ids));
     ipcMain.handle('deleteTodo', (_e: IpcMainInvokeEvent, id: number) => db.deleteTodo(id));
     ipcMain.handle('addLog', (_e: IpcMainInvokeEvent, { taskId, content }: { taskId: number, content: string | null }) => db.addLog(taskId, content));
+    ipcMain.handle('updateLog', (_e: IpcMainInvokeEvent, { id, content }: { id: number, content: string | null }) => db.updateLog(id, content));
+    ipcMain.handle('deleteLog', (_e: IpcMainInvokeEvent, id: number) => db.deleteLog(id));
     ipcMain.handle('addNote', (_e: IpcMainInvokeEvent, { taskId, title, content, type }: { taskId: number, title: string | null, content: string | null, type: string }) => db.addNote(taskId, title, content, type));
     ipcMain.handle('updateNote', (_e: IpcMainInvokeEvent, { id, title, content }: { id: number, title: string | null, content: string | null }) => db.updateNote(id, title, content));
     ipcMain.handle('deleteNote', (_e: IpcMainInvokeEvent, id: number) => db.deleteNote(id));
@@ -140,7 +142,10 @@ function setupIpcHandlers() {
     ipcMain.handle('deleteTopicTodo', (_e: IpcMainInvokeEvent, id: number) => db.deleteTopicTodo(id));
     ipcMain.handle('getTopicLogs', (_e: IpcMainInvokeEvent, id: number) => db.getTopicLogs(id));
     ipcMain.handle('addTopicLog', (_e: IpcMainInvokeEvent, { id, content }: { id: number, content: string | null }) => db.addTopicLog(id, content));
+    ipcMain.handle('updateTopicLog', (_e: IpcMainInvokeEvent, { id, content }: { id: number, content: string | null }) => db.updateTopicLog(id, content));
+    ipcMain.handle('deleteTopicLog', (_e: IpcMainInvokeEvent, id: number) => db.deleteTopicLog(id));
     ipcMain.handle('getTopicNotes', (_e: IpcMainInvokeEvent, id: number) => db.getTopicNotes(id));
+    ipcMain.handle('getAllTopicNotes', (_e: IpcMainInvokeEvent, filters: any = {}) => db.getAllTopicNotes(filters));
     ipcMain.handle('addTopicNote', (_e: IpcMainInvokeEvent, { id, title, content, type }: { id: number, title: string | null, content: string | null, type: string }) => db.addTopicNote(id, title, content, type));
     ipcMain.handle('updateTopicNote', (_e: IpcMainInvokeEvent, { id, title, content }: { id: number, title: string | null, content: string | null }) => db.updateTopicNote(id, title, content));
     ipcMain.handle('deleteTopicNote', (_e: IpcMainInvokeEvent, id: number) => db.deleteTopicNote(id));
