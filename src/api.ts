@@ -150,7 +150,7 @@ export interface TopicNote {
 }
 
 export interface SearchResult {
-    type: 'task' | 'note' | 'weekly';
+    type: 'task' | 'note' | 'weekly' | 'thread';
     id: number;
     title: string;
     status?: string | null;
@@ -305,8 +305,8 @@ export const api = {
         invoke('getAllTopicNotes', filters),
     addTopicNote: (id: number, title: string | null, content: string | null, type: string): Promise<ChangesResponse> => 
         invoke('addTopicNote', { id, title, content, type }),
-    updateTopicNote: (id: number, title: string | null, content: string | null): Promise<ChangesResponse> => 
-        invoke('updateTopicNote', { id, title, content }),
+    updateTopicNote: (id: number, title: string | null, content: string | null, created_at?: string | null): Promise<ChangesResponse> => 
+        invoke('updateTopicNote', { id, title, content, created_at }),
     deleteTopicNote: (id: number): Promise<ChangesResponse> => invoke('deleteTopicNote', id),
 
     // Task-Topic links

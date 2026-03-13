@@ -383,7 +383,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ taskId, onClose, onUpdate }) => {
                             />
                         </section>
                         <section>
-                            <label>Topics</label>
+                            <label>Threads</label>
                             <div className="topics-checkboxes" style={{ maxHeight: 150, overflow: 'auto', border: '1px solid var(--border-subtle)', padding: 8, borderRadius: 8, background: 'var(--input-bg)' }}>
                                 {allTopics.map(topic => (
                                     <label key={topic.id} style={{ display: 'flex', alignItems: 'center', gap: 8, textTransform: 'none', letterSpacing: 'normal', cursor: 'pointer', marginBottom: 4 }}>
@@ -402,7 +402,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ taskId, onClose, onUpdate }) => {
                                         <span style={{ fontSize: '0.85rem' }}>{topic.title}</span>
                                     </label>
                                 ))}
-                                {allTopics.length === 0 && <div className="muted" style={{ fontSize: '0.8rem' }}>No topics found.</div>}
+                                {allTopics.length === 0 && <div className="muted" style={{ fontSize: '0.8rem' }}>No threads found.</div>}
                             </div>
                         </section>
                         <section>

@@ -11,6 +11,7 @@ const iconForType = (type: string) => {
     if (type === 'task') return '✅';
     if (type === 'note') return '📝';
     if (type === 'weekly') return '📅';
+    if (type === 'thread') return '🧵';
     return '🔎';
 };
 
@@ -18,7 +19,16 @@ const labelForType = (type: string) => {
     if (type === 'task') return 'Task';
     if (type === 'note') return 'Note';
     if (type === 'weekly') return 'Weekly';
+    if (type === 'thread') return 'Thread';
     return 'Result';
+};
+
+const formatStatus = (status: string | null | undefined) => {
+    if (!status) return 'Unknown';
+    if (status === 'IN_PROGRESS') return 'In Progress';
+    if (status === 'BACKLOG') return 'Backlog';
+    if (status === 'DONE') return 'Done';
+    return status;
 };
 
 const SearchModal: React.FC<SearchModalProps> = ({ open, onClose, onSelect }) => {
@@ -105,7 +115,7 @@ const SearchModal: React.FC<SearchModalProps> = ({ open, onClose, onSelect }) =>
                     <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontWeight: 900 }}>Search</div>
                         <div className="muted" style={{ marginTop: 4 }}>
-                            Tasks, notes, and weekly status
+                            Tasks, notes, threads, and weekly status
                         </div>
                     </div>
                     <button type="button" className="close-btn" onClick={() => onClose?.()}>
@@ -152,7 +162,7 @@ const SearchModal: React.FC<SearchModalProps> = ({ open, onClose, onSelect }) =>
                     {loading && <div className="search-hint">Searching…</div>}
                     {!loading && error && <div className="search-hint error">{error}</div>}
                     {!loading && !error && !trimmed && (
-                        <div className="search-hint">Start typing to search tasks and notes.</div>
+                        <div className="search-hint">Start typing to search tasks, notes, and threads.</div>
                     )}
                     {!loading && !error && trimmed && selectable.length === 0 && (
                         <div className="search-hint">No results.</div>
@@ -180,8 +190,8 @@ const SearchModal: React.FC<SearchModalProps> = ({ open, onClose, onSelect }) =>
                                                 <span className="search-result-tag">{labelForType(r.type)}</span>
                                             </span>
                                             {r.snippet ? <span className="search-result-snippet">{r.snippet}</span> : null}
-                                            {r.type === 'task' && r.status ? (
-                                                <span className="search-result-meta">Status: {r.status}</span>
+                                            {(r.type === 'task' || r.type === 'thread') && r.status ? (
+                                                <span className="search-result-meta">Status: {formatStatus(r.status)}</span>
                                             ) : null}
                                             {r.type === 'weekly' && r.week_start ? (
                                                 <span className="search-result-meta">Week of {r.week_start}</span>

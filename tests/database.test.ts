@@ -130,7 +130,7 @@ describe('database.ts test suite', () => {
         expect(logs.find((log) => log.id === Number(logId))).toBeUndefined();
     });
 
-    it('should return dated topic notes and support topic worklog edits', async () => {
+    it('should return searchable thread notes with editable dates and topic worklog edits', async () => {
         await db.init();
 
         const { lastInsertRowid: topicId } = await db.createTopic('Email Thread', 'Follow-up thread', 'BACKLOG', 'email');
@@ -140,6 +140,14 @@ describe('database.ts test suite', () => {
 
         expect(createdNote?.created_at).toBeDefined();
         expect(createdNote?.topic_title).toBe('Email Thread');
+
+        await db.updateTopicNote(Number(noteId), 'Thread recap', '<p>Late import from inbox</p>', '2024-01-15');
+        const datedNotes = await db.getAllTopicNotes({ startDate: '2024-01-15', endDate: '2024-01-15' });
+        const editedNote = datedNotes.find((note) => note.id === Number(noteId));
+        expect(editedNote?.created_at.startsWith('2024-01-15')).toBe(true);
+
+        const searchResults = await db.search('late import inbox', 10);
+        expect(searchResults.some((result) => result.type === 'thread' && result.id === Number(topicId))).toBe(true);
 
         const { lastInsertRowid: logId } = await db.addTopicLog(Number(topicId), 'Logged work');
         await db.updateTopicLog(Number(logId), 'Updated topic work');

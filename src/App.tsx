@@ -39,11 +39,17 @@ export interface WeeklyFocus {
     nonce: number;
 }
 
+export interface ThreadFocus {
+    threadId: number;
+    nonce: number;
+}
+
 function App() {
     const [activeTab, setActiveTab] = useState<string>('kanban');
     const [backlogFocus, setBacklogFocus] = useState<BacklogFocus | null>(null);
     const [notesFocus, setNotesFocus] = useState<NotesFocus | null>(null);
     const [weeklyFocus, setWeeklyFocus] = useState<WeeklyFocus | null>(null);
+    const [threadFocus, setThreadFocus] = useState<ThreadFocus | null>(null);
     const [theme, setTheme] = useState<Theme>(getInitialTheme);
     const [searchOpen, setSearchOpen] = useState<boolean>(false);
 
@@ -97,6 +103,11 @@ function App() {
         if (result.type === 'weekly') {
             setActiveTab('weekly');
             setWeeklyFocus({ date: result.week_start || '', nonce: Date.now() });
+            return;
+        }
+        if (result.type === 'thread') {
+            setActiveTab('topics');
+            setThreadFocus({ threadId: result.id, nonce: Date.now() });
         }
     };
 
@@ -105,7 +116,7 @@ function App() {
             <TopNav activeTab={activeTab} setActiveTab={setActiveTab} theme={theme} setTheme={setTheme} />
             <main className={`content ${activeTab === 'notes' ? 'content-notes' : ''}`} role="main">
                 {activeTab === 'kanban' && <ActivePage onOpenInBacklog={openTaskInBacklog} />}
-                {activeTab === 'topics' && <TopicsPage />}
+                {activeTab === 'topics' && <TopicsPage focus={threadFocus} />}
                 {activeTab === 'weekly' && <WeeklyStatusPage focus={weeklyFocus} />}
                 {activeTab === 'notes' && <NotesPage focus={notesFocus} onOpenSearch={openSearch} />}
                 {activeTab === 'backlog' && <BacklogPage focus={backlogFocus} onOpenSearch={openSearch} />}

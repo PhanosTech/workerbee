@@ -1,7 +1,7 @@
 import React, { FormEvent, useEffect, useRef, useState } from 'react';
 import { api, Topic, TopicLog, TopicNote } from '../api';
 import TiptapEditor from './TiptapEditor';
-import { formatDateTime, htmlToPlainText, normalizeNoteContent } from '../utils/noteUtils';
+import { dateInputToIso, formatDateTime, htmlToPlainText, normalizeNoteContent, toDateInputValue } from '../utils/noteUtils';
 
 interface TopicModalProps {
     topicId: number | null;
@@ -204,7 +204,7 @@ const TopicModal: React.FC<TopicModalProps> = ({ topicId, onClose, onUpdate }) =
 
     const handleDelete = async () => {
         if (!topic?.id) return;
-        if (!confirm('Delete this topic?')) return;
+        if (!confirm('Delete this thread?')) return;
         await api.deleteTopic(topic.id);
         onUpdate();
         onClose();
@@ -212,7 +212,7 @@ const TopicModal: React.FC<TopicModalProps> = ({ topicId, onClose, onUpdate }) =
 
     const handleArchive = async () => {
         if (!topic?.id) return;
-        if (!confirm('Archive this topic?')) return;
+        if (!confirm('Archive this thread?')) return;
         await api.archiveTopic(topic.id);
         onUpdate();
         onClose();
@@ -262,13 +262,15 @@ const TopicModal: React.FC<TopicModalProps> = ({ topicId, onClose, onUpdate }) =
         setNoteDirty(false);
     };
 
-    const updateSelectedNoteDraft = (updates: Partial<TopicNote>) => {
+    const updateSelectedNoteDraft = (updates: Partial<TopicNote>, options: { syncList?: boolean } = {}) => {
         const currentId = selectedNoteRef.current?.id;
         if (!currentId) return;
         setSelectedNote((prev) => (prev ? { ...prev, ...updates } : prev));
-        setNotes((prev) =>
-            prev.map((note) => (note.id === currentId ? { ...note, ...updates } : note))
-        );
+        if (options.syncList !== false) {
+            setNotes((prev) =>
+                prev.map((note) => (note.id === currentId ? { ...note, ...updates } : note))
+            );
+        }
         setNoteDirty(true);
     };
 
@@ -282,17 +284,24 @@ const TopicModal: React.FC<TopicModalProps> = ({ topicId, onClose, onUpdate }) =
 
     const handleSaveNote = async (note: TopicNote | null = selectedNoteRef.current) => {
         if (!note?.id) return;
-        await api.updateTopicNote(note.id, note.title ?? null, note.content ?? null);
+        const previousNote = notes.find((entry) => entry.id === note.id);
+        const dateChanged = previousNote?.created_at !== note.created_at;
+        await api.updateTopicNote(note.id, note.title ?? null, note.content ?? null, note.created_at ?? null);
         const updatedAt = new Date().toISOString();
         const nextNote = { ...note, updated_at: updatedAt };
-        setNotes((prev) => prev.map((entry) => (entry.id === note.id ? nextNote : entry)));
-        setSelectedNote((prev) => (prev?.id === note.id ? nextNote : prev));
+        const currentTopicId = topic?.id ?? note.topic_id;
+        if (dateChanged && currentTopicId) {
+            await refreshTopicNotes(currentTopicId, note.id);
+        } else {
+            setNotes((prev) => prev.map((entry) => (entry.id === note.id ? nextNote : entry)));
+            setSelectedNote((prev) => (prev?.id === note.id ? nextNote : prev));
+        }
         setNoteDirty(false);
     };
 
     const handleDeleteNote = async () => {
         if (!selectedNote?.id) return;
-        if (!confirm('Delete this note?')) return;
+        if (!confirm('Delete this thread note?')) return;
         await api.deleteTopicNote(selectedNote.id);
         const remaining = notes.filter((note) => note.id !== selectedNote.id);
         setNotes(remaining);
@@ -312,7 +321,7 @@ const TopicModal: React.FC<TopicModalProps> = ({ topicId, onClose, onUpdate }) =
                 autoSaveTimerRef.current = null;
             }
         };
-    }, [noteDirty, selectedNote?.id, selectedNote?.title, selectedNote?.content]);
+    }, [noteDirty, selectedNote?.id, selectedNote?.title, selectedNote?.content, selectedNote?.created_at]);
 
     if (loading || !topic) {
         return (
@@ -338,7 +347,7 @@ const TopicModal: React.FC<TopicModalProps> = ({ topicId, onClose, onUpdate }) =
                         className="title-input"
                         value={topic.title || ''}
                         onChange={(e) => updateTopicDraft({ title: e.target.value })}
-                        placeholder="Topic title"
+                        placeholder="Thread title"
                     />
                     <button className="close-btn" onClick={() => void handleRequestClose()}>&times;</button>
                 </div>
@@ -358,16 +367,16 @@ const TopicModal: React.FC<TopicModalProps> = ({ topicId, onClose, onUpdate }) =
                 <div className="modal-body" style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                     {activeTab === 'notes' ? (
                         <div className="topic-notes-workspace">
-                            <aside className="notes-sidebar" aria-label="Topic notes">
+                            <aside className="notes-sidebar" aria-label="Thread notes">
                                 <div className="notes-sidebar-header">
                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                                        <h3 style={{ margin: 0 }}>Topic Notes</h3>
+                                        <h3 style={{ margin: 0 }}>Thread Notes</h3>
                                         <button type="button" onClick={() => void handleCreateNote()}>
                                             + New
                                         </button>
                                     </div>
                                     <div className="muted" style={{ marginTop: 8 }}>
-                                        {notes.length ? `${notes.length} saved note${notes.length === 1 ? '' : 's'}` : 'Capture each email thread as its own note.'}
+                                        {notes.length ? `${notes.length} saved note${notes.length === 1 ? '' : 's'}` : 'Save each email thread as its own note.'}
                                     </div>
                                 </div>
                                 <div className="notes-sidebar-content">
@@ -393,7 +402,7 @@ const TopicModal: React.FC<TopicModalProps> = ({ topicId, onClose, onUpdate }) =
                                         </ul>
                                     ) : (
                                         <div className="topic-notes-empty">
-                                            <p>No topic notes yet.</p>
+                                            <p>No thread notes yet.</p>
                                             <button type="button" className="primary-btn" onClick={() => void handleCreateNote()}>
                                                 Create First Note
                                             </button>
@@ -402,13 +411,13 @@ const TopicModal: React.FC<TopicModalProps> = ({ topicId, onClose, onUpdate }) =
                                 </div>
                             </aside>
 
-                            <section className="notes-editor-area" aria-label="Topic note editor">
+                            <section className="notes-editor-area" aria-label="Thread note editor">
                                 {selectedNote ? (
                                     <>
                                         <header className="note-header">
                                             <div className="note-header-meta">
                                                 <div className="muted">
-                                                    {topic.title || 'Topic'} · Created {formatDateTime(selectedNote.created_at)}
+                                                    {topic.title || 'Thread'} · Date {formatDateTime(selectedNote.created_at)}
                                                 </div>
                                                 <input
                                                     className="note-title-input"
@@ -419,6 +428,19 @@ const TopicModal: React.FC<TopicModalProps> = ({ topicId, onClose, onUpdate }) =
                                                 />
                                             </div>
                                             <div className="note-header-actions">
+                                                <label className="notes-date-field">
+                                                    <span>Thread Date</span>
+                                                    <input
+                                                        type="date"
+                                                        value={toDateInputValue(selectedNote.created_at)}
+                                                        onChange={(e) => {
+                                                            const nextCreatedAt = dateInputToIso(e.target.value);
+                                                            if (!nextCreatedAt) return;
+                                                            updateSelectedNoteDraft({ created_at: nextCreatedAt }, { syncList: false });
+                                                        }}
+                                                        onBlur={() => void handleSaveNote()}
+                                                    />
+                                                </label>
                                                 <button type="button" className="link-btn danger-link" onClick={handleDeleteNote}>
                                                     Delete
                                                 </button>
@@ -436,7 +458,7 @@ const TopicModal: React.FC<TopicModalProps> = ({ topicId, onClose, onUpdate }) =
                                 ) : (
                                     <div className="notes-empty-state">
                                         <div className="notes-empty-icon" aria-hidden="true">📝</div>
-                                        <p>Select a topic note from the list or create a new one.</p>
+                                        <p>Select a thread note from the list or create a new one.</p>
                                         <button type="button" className="primary-btn" onClick={() => void handleCreateNote()}>
                                             Create First Note
                                         </button>
@@ -453,7 +475,7 @@ const TopicModal: React.FC<TopicModalProps> = ({ topicId, onClose, onUpdate }) =
                                 <textarea
                                     value={topic.description || ''}
                                     onChange={(e) => updateTopicDraft({ description: e.target.value })}
-                                    placeholder="What is this thread or follow-up about?"
+                                    placeholder="What is this thread about?"
                                 />
                             </section>
                             <section>
@@ -484,7 +506,7 @@ const TopicModal: React.FC<TopicModalProps> = ({ topicId, onClose, onUpdate }) =
                             <div className="task-panel-header">
                                 <label>Worklog</label>
                             </div>
-                            <div className="task-panel-scroll" role="region" aria-label="Topic worklog">
+                            <div className="task-panel-scroll" role="region" aria-label="Thread worklog">
                                 {logs.map((log) => (
                                     <div key={log.id} className={`log-entry ${editingLogId === log.id ? 'editing' : ''}`}>
                                         <div className="log-entry-header">
@@ -527,7 +549,7 @@ const TopicModal: React.FC<TopicModalProps> = ({ topicId, onClose, onUpdate }) =
                 <div className="task-modal-footer">
                     <div className="task-modal-actions">
                         {topic.id ? <button onClick={handleArchive}>Archive</button> : null}
-                        {topic.id ? <button className="danger" onClick={handleDelete}>Delete Topic</button> : null}
+                        {topic.id ? <button className="danger" onClick={handleDelete}>Delete Thread</button> : null}
                         <button className="primary-btn" onClick={() => void handleSaveTopicAndClose()}>
                             Save & Close
                         </button>

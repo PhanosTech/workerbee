@@ -1,8 +1,25 @@
 import React, { useEffect, useState } from 'react';
 import { api, Topic } from '../api';
 import TopicModal from '../components/TopicModal';
+import type { ThreadFocus } from '../App';
 
-type TopicView = 'active' | 'done' | 'archived';
+type TopicView = 'active' | 'in-progress' | 'done' | 'archived';
+
+interface TopicsPageProps {
+    focus?: ThreadFocus | null;
+}
+
+const formatThreadStatus = (status: string | null | undefined) => {
+    if (status === 'IN_PROGRESS') return 'In Progress';
+    if (status === 'DONE') return 'Done';
+    return 'Backlog';
+};
+
+const nextThreadStatus = (status: string | null | undefined) => {
+    if (status === 'BACKLOG') return 'IN_PROGRESS';
+    if (status === 'IN_PROGRESS') return 'DONE';
+    return 'BACKLOG';
+};
 
 const moveBefore = <T extends { id: number }>(items: T[], movingId: number, targetId: number): T[] => {
     const fromIndex = items.findIndex((item) => item.id === movingId);
@@ -26,7 +43,7 @@ const moveToEnd = <T extends { id: number }>(items: T[], movingId: number): T[] 
     return next;
 };
 
-const TopicsPage: React.FC = () => {
+const TopicsPage: React.FC<TopicsPageProps> = ({ focus }) => {
     const [topics, setTopics] = useState<Topic[]>([]);
     const [selectedTopicId, setSelectedTopicId] = useState<number | null>(null);
     const [showModal, setShowModal] = useState<boolean>(false);
@@ -37,11 +54,20 @@ const TopicsPage: React.FC = () => {
         loadTopics();
     }, [view]);
 
+    useEffect(() => {
+        const threadId = Number(focus?.threadId);
+        if (!threadId) return;
+        setSelectedTopicId(threadId);
+        setShowModal(true);
+    }, [focus?.nonce, focus?.threadId]);
+
     const loadTopics = async () => {
         try {
             const filters =
                 view === 'done'
                     ? { statuses: ['DONE'] }
+                    : view === 'in-progress'
+                      ? { statuses: ['IN_PROGRESS'] }
                     : view === 'archived'
                       ? { archived: 'only' as const }
                       : { statuses: ['BACKLOG', 'IN_PROGRESS'] };
@@ -60,6 +86,17 @@ const TopicsPage: React.FC = () => {
     const handleAddTopic = () => {
         setSelectedTopicId(null);
         setShowModal(true);
+    };
+
+    const handleCycleStatus = async (e: React.MouseEvent, topic: Topic) => {
+        e.stopPropagation();
+        const nextStatus = nextThreadStatus(topic.status);
+        try {
+            await api.updateTopic(topic.id, { status: nextStatus });
+            await loadTopics();
+        } catch (err) {
+            console.error(err);
+        }
     };
 
     const parseDragTopicId = (e: React.DragEvent): number | null => {
@@ -97,10 +134,13 @@ const TopicsPage: React.FC = () => {
         <div className="page topics-page">
             <header className="page-header">
                 <div>
-                    <h2>Topics</h2>
+                    <h2>Threads</h2>
                     <div className="notes-filters" style={{ marginTop: 10 }}>
                         <button type="button" className={`filter-btn ${view === 'active' ? 'active' : ''}`} onClick={() => setView('active')}>
                             Backlog + In Progress
+                        </button>
+                        <button type="button" className={`filter-btn ${view === 'in-progress' ? 'active' : ''}`} onClick={() => setView('in-progress')}>
+                            In Progress Only
                         </button>
                         <button type="button" className={`filter-btn ${view === 'done' ? 'active' : ''}`} onClick={() => setView('done')}>
                             Done
@@ -110,7 +150,7 @@ const TopicsPage: React.FC = () => {
                         </button>
                     </div>
                 </div>
-                <button className="primary-btn" onClick={handleAddTopic}>+ Add Topic</button>
+                <button className="primary-btn" onClick={handleAddTopic}>+ Add Thread</button>
             </header>
 
             <div className="tasks-table-wrap">
@@ -145,9 +185,14 @@ const TopicsPage: React.FC = () => {
                                 </td>
                                 <td className="tasks-title">{topic.title}</td>
                                 <td className="tasks-status">
-                                    <span className={`status-badge ${topic.status === 'IN_PROGRESS' ? 'active' : topic.status === 'DONE' ? 'done' : ''}`}>
-                                        {topic.status === 'IN_PROGRESS' ? 'In Progress' : topic.status}
-                                    </span>
+                                    <button
+                                        type="button"
+                                        className={`status-badge status-toggle ${topic.status === 'IN_PROGRESS' ? 'active' : topic.status === 'DONE' ? 'done' : ''}`}
+                                        onClick={(e) => void handleCycleStatus(e, topic)}
+                                        title="Cycle status"
+                                    >
+                                        {formatThreadStatus(topic.status)}
+                                    </button>
                                 </td>
                                 <td>{topic.tags || '—'}</td>
                                 <td className="tasks-actions" onClick={(e) => e.stopPropagation()}>
@@ -157,7 +202,7 @@ const TopicsPage: React.FC = () => {
                         ))}
                     </tbody>
                 </table>
-                {topics.length === 0 && <p className="empty-state">No topics in this view.</p>}
+                {topics.length === 0 && <p className="empty-state">No threads in this view.</p>}
             </div>
 
             {showModal && (

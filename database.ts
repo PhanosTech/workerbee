@@ -204,6 +204,23 @@ const parseDateOnly = (value: string | null | undefined): string | null => {
 
 const dateOnly = (isoOrDate: string | null | undefined): string => parseDateOnly(isoOrDate) || '';
 
+const parseEditableTimestamp = (value: string | null | undefined): string | null => {
+    const raw = String(value || '').trim();
+    if (!raw) return null;
+    const dateOnlyMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (dateOnlyMatch) {
+        const year = Number(dateOnlyMatch[1]);
+        const month = Number(dateOnlyMatch[2]);
+        const day = Number(dateOnlyMatch[3]);
+        if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null;
+        return new Date(Date.UTC(year, month - 1, day, 12, 0, 0)).toISOString();
+    }
+    const normalized = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(raw) ? `${raw}:00` : raw;
+    const date = new Date(normalized);
+    if (Number.isNaN(date.getTime())) return null;
+    return date.toISOString();
+};
+
 const inDateRange = (iso: string | null | undefined, startDate: string, endDate: string): boolean => {
     if (!iso) return false;
     const d = dateOnly(iso);
@@ -1450,6 +1467,21 @@ export const search = async (query: string, limit = 60): Promise<any[]> => {
     };
 
     const results: any[] = [];
+    const topicSearchData = new Map<number, { textParts: string[]; latestUpdatedAt: string | null }>();
+
+    st.topic_notes.forEach((note) => {
+        const topicId = Number(note.topic_id);
+        const entry = topicSearchData.get(topicId) || { textParts: [], latestUpdatedAt: null };
+        const noteTitle = String(note.title || '').trim();
+        const bodyText = htmlToText(note.content);
+        if (noteTitle) entry.textParts.push(noteTitle);
+        if (bodyText) entry.textParts.push(bodyText);
+        const noteUpdatedAt = String(note.updated_at || note.created_at || '').trim();
+        if (noteUpdatedAt && (!entry.latestUpdatedAt || noteUpdatedAt.localeCompare(entry.latestUpdatedAt) > 0)) {
+            entry.latestUpdatedAt = noteUpdatedAt;
+        }
+        topicSearchData.set(topicId, entry);
+    });
 
     st.tasks.forEach((task) => {
         if (!task || task.archived) return;
@@ -1502,6 +1534,24 @@ export const search = async (query: string, limit = 60): Promise<any[]> => {
             updated_at: note.updated_at ?? note.created_at ?? null,
             snippet: makeSnippet(bodyText || title),
             score: scoreHit(title, bodyText),
+        });
+    });
+
+    st.topics.forEach((topic) => {
+        if (!topic || topic.archived) return;
+        const title = String(topic.title || '').trim() || 'Untitled thread';
+        const related = topicSearchData.get(Number(topic.id));
+        const body = `${topic.description || ''} ${topic.tags || ''} ${(related?.textParts || []).join(' ')}`.trim();
+        if (!matches(title, body)) return;
+        const snippetSource = (related?.textParts || []).join(' ') || topic.description || topic.tags || title;
+        results.push({
+            type: 'thread',
+            id: Number(topic.id),
+            title,
+            status: topic.status ?? null,
+            updated_at: related?.latestUpdatedAt || topic.updated_at || topic.created_at || null,
+            snippet: makeSnippet(snippetSource),
+            score: scoreHit(title, body),
         });
     });
 
@@ -1863,13 +1913,17 @@ export const addTopicNote = async (topic_id: number, title: string | null, conte
         return { changes: 1, lastInsertRowid: id };
     });
 };
-export const updateTopicNote = async (id: number, title: string | null, content: string | null) => {
+export const updateTopicNote = async (id: number, title: string | null, content: string | null, created_at?: string | null) => {
     return withWriteLock(async () => {
         const st = getState();
         const note = st.topic_notes.find((tn) => Number(tn.id) === Number(id));
         if (!note) return { changes: 0 };
         note.title = title ?? null;
         note.content = content ?? null;
+        if (created_at !== undefined) {
+            const nextCreatedAt = parseEditableTimestamp(created_at);
+            if (nextCreatedAt) note.created_at = nextCreatedAt;
+        }
         note.updated_at = nowIso();
         await persist();
         return { changes: 1 };

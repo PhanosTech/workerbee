@@ -27,7 +27,7 @@ const TopNav: React.FC<TopNavProps> = ({ activeTab, setActiveTab, theme, setThem
                     className={`topbar-tab ${activeTab === 'topics' ? 'active' : ''}`}
                     onClick={() => setActiveTab('topics')}
                 >
-                    Topics
+                    Threads
                 </button>
                 <button
                     type="button"

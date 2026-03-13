@@ -986,6 +986,15 @@ select:focus-visible {
     border-color: rgba(148, 163, 184, 0.3);
 }
 
+.status-toggle {
+    margin-right: 0;
+    cursor: pointer;
+}
+
+.status-toggle:hover {
+    border-color: var(--accent-color);
+}
+
 .priority-normal {
     background: rgba(255, 255, 255, 0.08);
 }
@@ -1325,6 +1334,35 @@ select:focus-visible {
     margin: 4px 0;
     opacity: 0.75;
     font-size: 0.85rem;
+}
+
+.kanban-card-label-trail {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 0;
+    margin-right: 0;
+    border: none;
+    background: transparent;
+    color: inherit;
+    font-size: 0.72rem;
+}
+
+.kanban-card-label-seg {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--seg-color) 45%, transparent);
+    background: color-mix(in srgb, var(--seg-color) 16%, var(--panel-bg));
+    color: var(--seg-color);
+    font-weight: 700;
+}
+
+.kanban-card-label-sep {
+    opacity: 0.55;
+    font-size: 0.7rem;
 }
 
 .task-type-icon {
@@ -1700,8 +1738,18 @@ select:focus-visible {
 
 .note-header-actions {
     display: flex;
-    align-items: center;
+    align-items: flex-end;
+    justify-content: flex-end;
+    flex-wrap: wrap;
     gap: 10px;
+}
+
+.note-header-actions .notes-date-field {
+    min-width: 160px;
+}
+
+.note-header-actions .notes-date-field input {
+    width: 100%;
 }
 
 .note-editor-wrapper {

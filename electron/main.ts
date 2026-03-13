@@ -147,7 +147,7 @@ function setupIpcHandlers() {
     ipcMain.handle('getTopicNotes', (_e: IpcMainInvokeEvent, id: number) => db.getTopicNotes(id));
     ipcMain.handle('getAllTopicNotes', (_e: IpcMainInvokeEvent, filters: any = {}) => db.getAllTopicNotes(filters));
     ipcMain.handle('addTopicNote', (_e: IpcMainInvokeEvent, { id, title, content, type }: { id: number, title: string | null, content: string | null, type: string }) => db.addTopicNote(id, title, content, type));
-    ipcMain.handle('updateTopicNote', (_e: IpcMainInvokeEvent, { id, title, content }: { id: number, title: string | null, content: string | null }) => db.updateTopicNote(id, title, content));
+    ipcMain.handle('updateTopicNote', (_e: IpcMainInvokeEvent, { id, title, content, created_at }: { id: number, title: string | null, content: string | null, created_at?: string | null }) => db.updateTopicNote(id, title, content, created_at));
     ipcMain.handle('deleteTopicNote', (_e: IpcMainInvokeEvent, id: number) => db.deleteTopicNote(id));
 
     // Task-Topic Links
