@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, IpcMainInvokeEvent } from 'electron';
 import * as path from 'path';
 import * as db from '../database';
+import { ensureConfigFile, resolveStorageConfig } from './storageConfig';
 
 // Ensure Windows uses the correct AppUserModelID
 if (process.platform === 'win32') {
@@ -13,17 +14,6 @@ if (process.platform === 'win32') {
 
 // Environment Setup
 const isDev = !app.isPackaged;
-
-// Determine DB path and set it before initializing database
-// Note: __dirname is available in CommonJS. If this is compiled to ESM, 
-// you might need to define it using import.meta.url.
-let dbPath: string;
-if (isDev) {
-    dbPath = path.join(__dirname, '../workbee_data');
-} else {
-    dbPath = path.join(path.dirname(process.execPath), 'workbee_data');
-}
-process.env.DB_PATH = dbPath;
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -196,6 +186,34 @@ function setupIpcHandlers() {
 
 app.whenReady().then(async () => {
     try {
+        if (isDev) {
+            process.env.DB_PATH = path.join(__dirname, '../workbee_data');
+        } else {
+            const storage = resolveStorageConfig({
+                appDataDir: app.getPath('appData'),
+                exePath: process.execPath,
+            });
+            process.env.DB_PATH = storage.dataDir;
+
+            if (process.platform === 'win32' && !storage.configPath && storage.dataDirSource === 'default') {
+                try {
+                    ensureConfigFile(storage.preferredConfigPath, { dataDir: storage.dataDir });
+                } catch (err) {
+                    console.warn('[workbee] Failed to create default config file:', err);
+                }
+            }
+
+            console.log(
+                [
+                    `[workbee] Data dir: ${storage.dataDir}`,
+                    `[workbee] Data dir source: ${storage.dataDirSource}`,
+                    storage.configPath
+                        ? `[workbee] Config: ${storage.configPath}`
+                        : `[workbee] Config search paths: ${storage.searchedConfigPaths.join(', ')}`,
+                ].join('\n')
+            );
+        }
+
         await db.init();
         setupIpcHandlers();
         createWindow();

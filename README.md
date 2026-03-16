@@ -33,6 +33,7 @@ WorkerBee is a local-first, single-user task manager with categories, notes, tod
 - Install deps (Windows): `npm install` (or `task init_win` if you use Taskfile).
 - Package (Windows): `npm run build && npm run pack:win` (or `task pkg_win`)
   - Output folder: `bin/win-unpacked/`
+  - App data is no longer meant to live inside `bin/win-unpacked/`; packaged builds default to `%APPDATA%\WorkerBee\workbee_data`.
 
 ### Common packaging error (symlink privilege)
 
@@ -45,9 +46,28 @@ If packaging fails with `Cannot create symbolic link` / `A required privilege is
 
 ## Data
 
-- Local data file: `workbee.json`
-  - Dev: stored in the project root.
-  - Electron production: stored next to the packaged executable (so each install folder has its own data).
+- Local data store: `workbee_data/`
+  - Dev: stored in `workbee_data/` in the project root.
+  - Electron production on Windows: stored in `%APPDATA%\WorkerBee\workbee_data` by default.
+  - Electron production on Windows still checks `workbee_data` next to the packaged executable as a legacy fallback when the default user-data directory does not exist yet.
+
+## Electron production config
+
+- Windows config file search order:
+  - `%APPDATA%\WorkerBee\config.json`
+  - `config.json` next to the packaged `.exe`
+  - `WORKERBEE_CONFIG` can point to an explicit config file and overrides both
+- Config schema:
+
+```json
+{
+  "dataDir": "C:\\Users\\YOUR_USER\\AppData\\Roaming\\WorkerBee\\workbee_data"
+}
+```
+
+- `dataDir` may be absolute or relative to the config file location.
+- A default `%APPDATA%\WorkerBee\config.json` is created automatically on first packaged Windows launch when no config exists yet.
+- A template is included at `config.example.json` in the repo.
 
 ## Install as a Linux systemd service
 
