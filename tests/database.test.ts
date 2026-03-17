@@ -158,4 +158,25 @@ describe('database.ts test suite', () => {
         logs = await db.getTopicLogs(Number(topicId));
         expect(logs.find((log) => log.id === Number(logId))).toBeUndefined();
     });
+
+    it('should manage task-thread links from either side of the relation', async () => {
+        await db.init();
+
+        const { lastInsertRowid: taskAId } = await db.createTask(null, 'Task A', null, null);
+        const { lastInsertRowid: taskBId } = await db.createTask(null, 'Task B', null, null);
+        const { lastInsertRowid: topicId } = await db.createTopic('Linked Thread', 'Discussion', 'BACKLOG', 'email');
+
+        await db.setTopicTasks(Number(topicId), [Number(taskAId), Number(taskBId)]);
+
+        let topicTasks = await db.getTopicTasks(Number(topicId));
+        expect(topicTasks.map((task) => task.id).sort((a, b) => a - b)).toEqual([Number(taskAId), Number(taskBId)]);
+
+        let taskTopics = await db.getTaskTopics(Number(taskAId));
+        expect(taskTopics.map((topic) => topic.id)).toContain(Number(topicId));
+
+        await db.setTaskTopics(Number(taskAId), []);
+
+        topicTasks = await db.getTopicTasks(Number(topicId));
+        expect(topicTasks.map((task) => task.id)).toEqual([Number(taskBId)]);
+    });
 });

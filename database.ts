@@ -1954,12 +1954,56 @@ export const setTaskTopics = async (taskId: number, topicIds: (number | string)[
     return withWriteLock(async () => {
         const st = getState();
         const tid = Number(taskId);
+        const validTopicIds = new Set(st.topics.map((topic) => Number(topic.id)));
+        const uniqueTopicIds = Array.from(
+            new Set(
+                topicIds
+                    .map((topicId) => Number(topicId))
+                    .filter((topicId) => Number.isFinite(topicId) && validTopicIds.has(topicId))
+            )
+        );
         // Remove existing
         st.task_topics = st.task_topics.filter((tt) => Number(tt.task_id) !== tid);
         // Add new
-        for (const topicId of topicIds) {
+        for (const topicId of uniqueTopicIds) {
             const id = bumpId('task_topics');
             st.task_topics.push({ id, task_id: tid, topic_id: Number(topicId) });
+        }
+        await persist();
+        return { ok: true };
+    });
+};
+
+export const getTopicTasks = async (topicId: number): Promise<Task[]> => {
+    const st = getState();
+    const todoStats = computeTodoStats(st);
+    const tid = Number(topicId);
+    const taskIds = st.task_topics
+        .filter((tt) => Number(tt.topic_id) === tid)
+        .map((tt) => Number(tt.task_id));
+    const taskSet = new Set(taskIds);
+    return st.tasks
+        .filter((task) => taskSet.has(Number(task.id)))
+        .map((task) => taskWithComputedFields(task, todoStats))
+        .sort(sortTasksByListPosition);
+};
+
+export const setTopicTasks = async (topicId: number, taskIds: (number | string)[]) => {
+    return withWriteLock(async () => {
+        const st = getState();
+        const tid = Number(topicId);
+        const validTaskIds = new Set(st.tasks.map((task) => Number(task.id)));
+        const uniqueTaskIds = Array.from(
+            new Set(
+                taskIds
+                    .map((taskId) => Number(taskId))
+                    .filter((taskId) => Number.isFinite(taskId) && validTaskIds.has(taskId))
+            )
+        );
+        st.task_topics = st.task_topics.filter((tt) => Number(tt.topic_id) !== tid);
+        for (const taskId of uniqueTaskIds) {
+            const id = bumpId('task_topics');
+            st.task_topics.push({ id, task_id: taskId, topic_id: tid });
         }
         await persist();
         return { ok: true };

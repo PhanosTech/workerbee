@@ -313,6 +313,9 @@ export const api = {
     getTaskTopics: (taskId: number): Promise<Topic[]> => invoke('getTaskTopics', taskId),
     setTaskTopics: (taskId: number, topicIds: (number | string)[]): Promise<{ ok: boolean }> => 
         invoke('setTaskTopics', { taskId, topicIds }),
+    getTopicTasks: (topicId: number): Promise<Task[]> => invoke('getTopicTasks', topicId),
+    setTopicTasks: (topicId: number, taskIds: (number | string)[]): Promise<{ ok: boolean }> =>
+        invoke('setTopicTasks', { topicId, taskIds }),
 
     // Hard delete task
     hardDeleteTask: (id: number): Promise<{ ok: boolean }> => invoke('hardDeleteTask', id)

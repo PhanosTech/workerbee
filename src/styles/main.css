@@ -1689,6 +1689,72 @@ select:focus-visible {
     background: var(--control-bg);
 }
 
+.topic-task-links {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 14px;
+}
+
+.topic-task-search {
+    display: grid;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.linked-entity-list {
+    display: grid;
+    gap: 8px;
+}
+
+.linked-entity-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid var(--border-faint);
+    border-radius: 10px;
+    background: var(--panel-bg-2);
+}
+
+.linked-entity-main {
+    min-width: 0;
+    display: grid;
+    gap: 4px;
+}
+
+.linked-entity-main .note-row-title {
+    margin-bottom: 0;
+}
+
+.linked-entity-meta {
+    font-size: 0.8rem;
+    opacity: 0.72;
+}
+
+.linked-topic-list {
+    display: grid;
+    gap: 8px;
+}
+
+.linked-topic-button {
+    width: 100%;
+    display: grid;
+    gap: 4px;
+    padding: 10px 12px;
+    text-align: left;
+    margin-right: 0;
+    background: var(--panel-bg-2);
+    border: 1px solid var(--border-faint);
+    border-radius: 10px;
+}
+
+.linked-topic-button:hover {
+    background: var(--control-bg);
+}
+
 .topic-notes-empty {
     display: grid;
     gap: 10px;
@@ -1930,6 +1996,10 @@ select:focus-visible {
 
     .notes-page,
     .topic-notes-workspace {
+        grid-template-columns: 1fr;
+    }
+
+    .topic-task-links {
         grid-template-columns: 1fr;
     }
 }

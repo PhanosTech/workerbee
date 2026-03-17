@@ -1,5 +1,5 @@
-import React, { FormEvent, useEffect, useRef, useState } from 'react';
-import { api, Topic, TopicLog, TopicNote } from '../api';
+import React, { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { api, SearchResult, Task, Topic, TopicLog, TopicNote } from '../api';
 import TiptapEditor from './TiptapEditor';
 import { dateInputToIso, formatDateTime, htmlToPlainText, normalizeNoteContent, toDateInputValue } from '../utils/noteUtils';
 
@@ -9,7 +9,25 @@ interface TopicModalProps {
     onUpdate: () => void;
 }
 
-type TopicTab = 'notes' | 'details' | 'logs';
+type TopicTab = 'notes' | 'details' | 'tasks' | 'logs';
+
+type LinkedTaskItem = Pick<Task, 'id' | 'title' | 'status' | 'category_id' | 'archived'>;
+
+const formatTaskStatus = (status: string | null | undefined) => {
+    const normalized = String(status || 'BACKLOG').trim().toUpperCase();
+    if (normalized === 'STARTED') return 'Started';
+    if (normalized === 'DOING') return 'Doing';
+    if (normalized === 'DONE') return 'Done';
+    return 'Backlog';
+};
+
+const toLinkedTaskItem = (task: Partial<Task> | SearchResult): LinkedTaskItem => ({
+    id: Number(task.id),
+    title: String(task.title || '').trim() || `Task #${task.id}`,
+    status: 'status' in task ? task.status ?? 'BACKLOG' : 'BACKLOG',
+    category_id: 'category_id' in task ? task.category_id ?? null : null,
+    archived: 'archived' in task ? Number(task.archived || 0) : 0,
+});
 
 const EMPTY_TOPIC_DRAFT: Partial<Topic> = {
     title: '',
@@ -29,6 +47,11 @@ const TopicModal: React.FC<TopicModalProps> = ({ topicId, onClose, onUpdate }) =
     const [noteDirty, setNoteDirty] = useState(false);
     const [newLog, setNewLog] = useState('');
     const [editingLogId, setEditingLogId] = useState<number | null>(null);
+    const [linkedTasks, setLinkedTasks] = useState<LinkedTaskItem[]>([]);
+    const [taskLinksDirty, setTaskLinksDirty] = useState(false);
+    const [taskQuery, setTaskQuery] = useState('');
+    const [taskSearchResults, setTaskSearchResults] = useState<SearchResult[]>([]);
+    const [taskSearchLoading, setTaskSearchLoading] = useState(false);
 
     const topicRef = useRef<Partial<Topic> | null>(null);
     const selectedNoteRef = useRef<TopicNote | null>(null);
@@ -79,6 +102,11 @@ const TopicModal: React.FC<TopicModalProps> = ({ topicId, onClose, onUpdate }) =
             setNoteDirty(false);
             setNewLog('');
             setEditingLogId(null);
+            setLinkedTasks([]);
+            setTaskLinksDirty(false);
+            setTaskQuery('');
+            setTaskSearchResults([]);
+            setTaskSearchLoading(false);
 
             if (!topicId) {
                 setTopic({ ...EMPTY_TOPIC_DRAFT });
@@ -91,10 +119,11 @@ const TopicModal: React.FC<TopicModalProps> = ({ topicId, onClose, onUpdate }) =
 
             setLoading(true);
             try {
-                const [topicData, topicLogs, topicNotes] = await Promise.all([
+                const [topicData, topicLogs, topicNotes, topicTasks] = await Promise.all([
                     api.getTopic(topicId),
                     api.getTopicLogs(topicId),
                     api.getTopicNotes(topicId),
+                    api.getTopicTasks(topicId),
                 ]);
                 if (cancelled) return;
 
@@ -107,7 +136,9 @@ const TopicModal: React.FC<TopicModalProps> = ({ topicId, onClose, onUpdate }) =
                 setLogs(topicLogs || []);
                 setNotes(normalizedNotes);
                 setSelectedNote(normalizedNotes[0] || null);
+                setLinkedTasks((topicTasks || []).map((task) => toLinkedTaskItem(task)));
                 setTopicDirty(false);
+                setTaskLinksDirty(false);
             } catch (err) {
                 if (!cancelled) console.error(err);
             } finally {
@@ -130,6 +161,11 @@ const TopicModal: React.FC<TopicModalProps> = ({ topicId, onClose, onUpdate }) =
         setTopic((prev) => (prev ? { ...prev, ...updates } : prev));
         setTopicDirty(true);
     };
+
+    const linkedTaskIds = useMemo(
+        () => new Set(linkedTasks.map((task) => Number(task.id))),
+        [linkedTasks]
+    );
 
     const ensureTopicPersisted = async (): Promise<Topic | null> => {
         const current = topicRef.current;
@@ -159,6 +195,39 @@ const TopicModal: React.FC<TopicModalProps> = ({ topicId, onClose, onUpdate }) =
         return pendingCreateRef.current;
     };
 
+    useEffect(() => {
+        if (activeTab !== 'tasks') return;
+        const query = taskQuery.trim();
+        if (!query) {
+            setTaskSearchResults([]);
+            setTaskSearchLoading(false);
+            return;
+        }
+
+        let cancelled = false;
+        const timer = window.setTimeout(() => {
+            void (async () => {
+                setTaskSearchLoading(true);
+                try {
+                    const results = await api.search(query, 12);
+                    if (cancelled) return;
+                    setTaskSearchResults(
+                        results.filter((result) => result.type === 'task' && !linkedTaskIds.has(Number(result.id)))
+                    );
+                } catch (err) {
+                    if (!cancelled) console.error(err);
+                } finally {
+                    if (!cancelled) setTaskSearchLoading(false);
+                }
+            })();
+        }, 180);
+
+        return () => {
+            cancelled = true;
+            window.clearTimeout(timer);
+        };
+    }, [activeTab, linkedTaskIds, taskQuery]);
+
     const persistSelectedNoteIfDirty = async () => {
         if (!noteDirtyRef.current || !selectedNoteRef.current) return;
         await handleSaveNote(selectedNoteRef.current);
@@ -173,17 +242,33 @@ const TopicModal: React.FC<TopicModalProps> = ({ topicId, onClose, onUpdate }) =
                 return;
             }
 
+            let savedTopic: Topic | null = current.id ? (current as Topic) : null;
+            let didUpdate = false;
+
             if (current.id) {
                 if (topicDirty) {
                     await api.updateTopic(current.id, current);
                     const refreshed = await api.getTopic(current.id);
                     if (refreshed) setTopic(refreshed);
+                    savedTopic = refreshed || ({ ...(current as Topic) });
                     setTopicDirty(false);
-                    onUpdate();
+                    didUpdate = true;
                 }
             } else {
                 const created = await ensureTopicPersisted();
-                if (created) onUpdate();
+                if (created) {
+                    savedTopic = created;
+                }
+            }
+
+            if (savedTopic?.id && taskLinksDirty) {
+                await api.setTopicTasks(savedTopic.id, linkedTasks.map((task) => task.id));
+                setTaskLinksDirty(false);
+                didUpdate = true;
+            }
+
+            if (didUpdate) {
+                onUpdate();
             }
 
             onClose();
@@ -309,6 +394,21 @@ const TopicModal: React.FC<TopicModalProps> = ({ topicId, onClose, onUpdate }) =
         setNoteDirty(false);
     };
 
+    const handleLinkTask = (result: SearchResult) => {
+        if (result.type !== 'task') return;
+        const taskId = Number(result.id);
+        if (!taskId || linkedTaskIds.has(taskId)) return;
+        setLinkedTasks((prev) => [...prev, toLinkedTaskItem(result)]);
+        setTaskLinksDirty(true);
+        setTaskQuery('');
+        setTaskSearchResults([]);
+    };
+
+    const handleUnlinkTask = (taskId: number) => {
+        setLinkedTasks((prev) => prev.filter((task) => Number(task.id) !== Number(taskId)));
+        setTaskLinksDirty(true);
+    };
+
     useEffect(() => {
         if (!noteDirty || !selectedNote?.id) return;
         if (autoSaveTimerRef.current) window.clearTimeout(autoSaveTimerRef.current);
@@ -358,6 +458,9 @@ const TopicModal: React.FC<TopicModalProps> = ({ topicId, onClose, onUpdate }) =
                     </button>
                     <button className={`tab-btn ${activeTab === 'details' ? 'active' : ''}`} onClick={() => setActiveTab('details')}>
                         Details
+                    </button>
+                    <button className={`tab-btn ${activeTab === 'tasks' ? 'active' : ''}`} onClick={() => setActiveTab('tasks')}>
+                        Tasks
                     </button>
                     <button className={`tab-btn ${activeTab === 'logs' ? 'active' : ''}`} onClick={() => setActiveTab('logs')}>
                         Worklog
@@ -497,6 +600,83 @@ const TopicModal: React.FC<TopicModalProps> = ({ topicId, onClose, onUpdate }) =
                                     onChange={(e) => updateTopicDraft({ tags: e.target.value })}
                                     placeholder="email, client, escalation"
                                 />
+                            </section>
+                        </div>
+                    ) : null}
+
+                    {activeTab === 'tasks' ? (
+                        <div className="topic-task-links">
+                            <section className="task-panel">
+                                <div className="task-panel-header">
+                                    <label>Find Task</label>
+                                    <span className="muted">{linkedTasks.length} linked</span>
+                                </div>
+                                <div className="topic-task-search">
+                                    <input
+                                        type="text"
+                                        value={taskQuery}
+                                        onChange={(e) => setTaskQuery(e.target.value)}
+                                        placeholder="Search tasks by title or description…"
+                                    />
+                                    <div className="muted" style={{ fontSize: '0.82rem' }}>
+                                        Links are saved when you click Save & Close.
+                                    </div>
+                                </div>
+                                <div className="task-panel-scroll" role="region" aria-label="Task search results">
+                                    {!taskQuery.trim() ? (
+                                        <div className="muted">Type to search active tasks.</div>
+                                    ) : taskSearchLoading ? (
+                                        <div className="muted">Searching…</div>
+                                    ) : taskSearchResults.length ? (
+                                        <div className="linked-entity-list">
+                                            {taskSearchResults.map((result) => (
+                                                <div key={result.id} className="linked-entity-row">
+                                                    <div className="linked-entity-main">
+                                                        <div className="note-row-title">{result.title}</div>
+                                                        <div className="linked-entity-meta">{formatTaskStatus(result.status)}</div>
+                                                    </div>
+                                                    <button type="button" onClick={() => handleLinkTask(result)}>
+                                                        Link
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className="muted">No matching tasks found.</div>
+                                    )}
+                                </div>
+                            </section>
+
+                            <section className="task-panel">
+                                <div className="task-panel-header">
+                                    <label>Linked Tasks</label>
+                                </div>
+                                <div className="task-panel-scroll" role="region" aria-label="Linked tasks">
+                                    {linkedTasks.length ? (
+                                        <div className="linked-entity-list">
+                                            {linkedTasks.map((linkedTask) => (
+                                                <div key={linkedTask.id} className="linked-entity-row">
+                                                    <div className="linked-entity-main">
+                                                        <div className="note-row-title">{linkedTask.title}</div>
+                                                        <div className="linked-entity-meta">
+                                                            {formatTaskStatus(linkedTask.status)}
+                                                            {linkedTask.archived ? ' · Archived' : ''}
+                                                        </div>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        className="link-btn danger-link"
+                                                        onClick={() => handleUnlinkTask(linkedTask.id)}
+                                                    >
+                                                        Unlink
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className="muted">No tasks linked to this thread yet.</div>
+                                    )}
+                                </div>
                             </section>
                         </div>
                     ) : null}

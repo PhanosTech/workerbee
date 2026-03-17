@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useEffect, useRef, FormEvent, DragEvent, KeyboardEvent } from 'react';
 import { api, Task, Todo, Log, Note, Category, Topic } from '../api';
 import TiptapEditor from './TiptapEditor';
+import TopicModal from './TopicModal';
 import { formatDateTime, htmlToPlainText, isEmptyHtml, normalizeNoteContent } from '../utils/noteUtils';
 
 const moveBefore = <T extends { id: number | string }>(items: T[], movingId: number | string, targetId: number | string): T[] => {
@@ -30,6 +31,14 @@ interface TaskModalProps {
     onUpdate: () => void;
 }
 
+const formatThreadStatus = (status: string | null | undefined, archived?: number) => {
+    if (archived) return 'Archived';
+    const normalized = String(status || 'BACKLOG').trim().toUpperCase();
+    if (normalized === 'IN_PROGRESS') return 'In Progress';
+    if (normalized === 'DONE') return 'Done';
+    return 'Backlog';
+};
+
 const TaskModal: React.FC<TaskModalProps> = ({ taskId, onClose, onUpdate }) => {
     const [task, setTask] = useState<Task | null>(null);
     const [taskDirty, setTaskDirty] = useState(false);
@@ -48,8 +57,8 @@ const TaskModal: React.FC<TaskModalProps> = ({ taskId, onClose, onUpdate }) => {
     const [noteTitleDraft, setNoteTitleDraft] = useState('');
     const [noteDraft, setNoteDraft] = useState('');
     const [copyFoldersLoading, setCopyFoldersLoading] = useState(false);
-    const [allTopics, setAllTopics] = useState<Topic[]>([]);
-    const [taskTopicIds, setTaskTopicIds] = useState<(number | string)[]>([]);
+    const [linkedTopics, setLinkedTopics] = useState<Topic[]>([]);
+    const [openTopicId, setOpenTopicId] = useState<number | null>(null);
     const taskDirtyRef = useRef(false);
 
     useEffect(() => {
@@ -61,7 +70,6 @@ const TaskModal: React.FC<TaskModalProps> = ({ taskId, onClose, onUpdate }) => {
         setNewLog('');
         setEditingLogId(null);
         loadTaskData({ preserveDraft: false });
-        loadAllTopics();
         loadTaskTopics();
         loadCategories();
     }, [taskId]);
@@ -87,19 +95,10 @@ const TaskModal: React.FC<TaskModalProps> = ({ taskId, onClose, onUpdate }) => {
         }
     };
 
-    const loadAllTopics = async () => {
-        try {
-            const data = await api.getTopics();
-            setAllTopics(data || []);
-        } catch (err) {
-            console.error(err);
-        }
-    };
-
     const loadTaskTopics = async () => {
         try {
             const data = await api.getTaskTopics(taskId);
-            setTaskTopicIds(data.map(t => t.id));
+            setLinkedTopics(data || []);
         } catch (err) {
             console.error(err);
         }
@@ -161,20 +160,17 @@ const TaskModal: React.FC<TaskModalProps> = ({ taskId, onClose, onUpdate }) => {
     const handleSaveTask = async (updates: Partial<Task> = {}) => {
         if (!task) return;
         const nextTask = { ...task, ...updates };
-        await Promise.all([
-            api.updateTask(task.id, {
-                category_id: nextTask.category_id,
-                title: nextTask.title,
-                description: nextTask.description,
-                url: nextTask.url,
-                status: nextTask.status,
-                story_points: nextTask.story_points,
-                priority: nextTask.priority,
-                task_type: nextTask.task_type,
-                due_date: nextTask.due_date
-            } as Partial<Task>),
-            api.setTaskTopics(task.id, taskTopicIds)
-        ]);
+        await api.updateTask(task.id, {
+            category_id: nextTask.category_id,
+            title: nextTask.title,
+            description: nextTask.description,
+            url: nextTask.url,
+            status: nextTask.status,
+            story_points: nextTask.story_points,
+            priority: nextTask.priority,
+            task_type: nextTask.task_type,
+            due_date: nextTask.due_date
+        } as Partial<Task>);
         setTaskDirty(false);
         onUpdate();
         onClose();
@@ -384,25 +380,24 @@ const TaskModal: React.FC<TaskModalProps> = ({ taskId, onClose, onUpdate }) => {
                         </section>
                         <section>
                             <label>Threads</label>
-                            <div className="topics-checkboxes" style={{ maxHeight: 150, overflow: 'auto', border: '1px solid var(--border-subtle)', padding: 8, borderRadius: 8, background: 'var(--input-bg)' }}>
-                                {allTopics.map(topic => (
-                                    <label key={topic.id} style={{ display: 'flex', alignItems: 'center', gap: 8, textTransform: 'none', letterSpacing: 'normal', cursor: 'pointer', marginBottom: 4 }}>
-                                        <input
-                                            type="checkbox"
-                                            checked={taskTopicIds.includes(topic.id)}
-                                            onChange={(e) => {
-                                                if (e.target.checked) {
-                                                    setTaskTopicIds([...taskTopicIds, topic.id]);
-                                                } else {
-                                                    setTaskTopicIds(taskTopicIds.filter(id => id !== topic.id));
-                                                }
-                                                setTaskDirty(true);
-                                            }}
-                                        />
-                                        <span style={{ fontSize: '0.85rem' }}>{topic.title}</span>
-                                    </label>
-                                ))}
-                                {allTopics.length === 0 && <div className="muted" style={{ fontSize: '0.8rem' }}>No threads found.</div>}
+                            <div className="linked-topic-list">
+                                {linkedTopics.length ? (
+                                    linkedTopics.map((topic) => (
+                                        <button
+                                            key={topic.id}
+                                            type="button"
+                                            className="linked-topic-button"
+                                            onClick={() => setOpenTopicId(topic.id)}
+                                        >
+                                            <div className="note-row-title">{topic.title || `Thread #${topic.id}`}</div>
+                                            <div className="linked-entity-meta">{formatThreadStatus(topic.status, topic.archived)}</div>
+                                        </button>
+                                    ))
+                                ) : (
+                                    <div className="muted" style={{ fontSize: '0.82rem' }}>
+                                        No linked threads yet. Link them from the thread editor.
+                                    </div>
+                                )}
                             </div>
                         </section>
                         <section>
@@ -707,6 +702,19 @@ const TaskModal: React.FC<TaskModalProps> = ({ taskId, onClose, onUpdate }) => {
                     </div>
                 </div>
             )}
+
+            {openTopicId ? (
+                <TopicModal
+                    topicId={openTopicId}
+                    onClose={() => {
+                        setOpenTopicId(null);
+                        void loadTaskTopics();
+                    }}
+                    onUpdate={() => {
+                        void loadTaskTopics();
+                    }}
+                />
+            ) : null}
         </div>
     );
 };

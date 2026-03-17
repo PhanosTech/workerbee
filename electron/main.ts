@@ -143,6 +143,8 @@ function setupIpcHandlers() {
     // Task-Topic Links
     ipcMain.handle('getTaskTopics', (_e: IpcMainInvokeEvent, taskId: number) => db.getTaskTopics(taskId));
     ipcMain.handle('setTaskTopics', (_e: IpcMainInvokeEvent, { taskId, topicIds }: { taskId: number, topicIds: (number | string)[] }) => db.setTaskTopics(taskId, topicIds));
+    ipcMain.handle('getTopicTasks', (_e: IpcMainInvokeEvent, topicId: number) => db.getTopicTasks(topicId));
+    ipcMain.handle('setTopicTasks', (_e: IpcMainInvokeEvent, { topicId, taskIds }: { topicId: number, taskIds: (number | string)[] }) => db.setTopicTasks(topicId, taskIds));
 
     // Search
     ipcMain.handle('search', (_e: IpcMainInvokeEvent, { q, limit }: { q: string, limit?: number }) => db.search(q, limit));
