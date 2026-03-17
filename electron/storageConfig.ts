@@ -1,11 +1,12 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-const WINDOWS_CONFIG_DIR_NAME = 'WorkerBee';
+const WINDOWS_CONFIG_DIR_NAME = 'workerbee';
+const WINDOWS_LEGACY_CONFIG_DIR_NAME = 'WorkerBee';
 const CONFIG_FILE_NAME = 'config.json';
 const DATA_DIR_NAME = 'workbee_data';
 
-export type DataDirSource = 'env' | 'config' | 'default' | 'legacy-exe';
+export type DataDirSource = 'env' | 'config' | 'default' | 'legacy-local' | 'legacy-roaming' | 'legacy-exe';
 
 export interface WorkerBeeDesktopConfig {
     dataDir?: string | null;
@@ -22,7 +23,9 @@ export interface ResolvedStorageConfig {
 }
 
 interface ResolveStorageConfigOptions {
-    appDataDir: string;
+    appDataDir?: string;
+    homeDir?: string;
+    localAppDataDir?: string;
     env?: NodeJS.ProcessEnv;
     exePath: string;
     platform?: NodeJS.Platform;
@@ -61,22 +64,35 @@ const readConfigFile = (filePath: string): WorkerBeeDesktopConfig | null => {
 const getWindowsConfigDir = (appDataDir: string): string =>
     path.join(appDataDir, WINDOWS_CONFIG_DIR_NAME);
 
+const getWindowsLegacyConfigDir = (appDataDir: string): string =>
+    path.join(appDataDir, WINDOWS_LEGACY_CONFIG_DIR_NAME);
+
 export const resolveStorageConfig = ({
-    appDataDir,
+    appDataDir = '',
+    homeDir = process.cwd(),
+    localAppDataDir = '',
     env = process.env,
     exePath,
     platform = process.platform,
 }: ResolveStorageConfigOptions): ResolvedStorageConfig => {
     const exeDir = path.dirname(exePath);
     const preferredConfigDir = platform === 'win32'
-        ? getWindowsConfigDir(appDataDir)
+        ? getWindowsConfigDir(homeDir)
         : exeDir;
     const preferredConfigPath = path.join(preferredConfigDir, CONFIG_FILE_NAME);
+    const legacyLocalConfigPath = platform === 'win32' && localAppDataDir
+        ? path.join(getWindowsConfigDir(localAppDataDir), CONFIG_FILE_NAME)
+        : null;
+    const legacyRoamingConfigPath = platform === 'win32' && appDataDir
+        ? path.join(getWindowsLegacyConfigDir(appDataDir), CONFIG_FILE_NAME)
+        : null;
     const exeConfigPath = path.join(exeDir, CONFIG_FILE_NAME);
     const envConfigPath = normalizeFsPath(env.WORKERBEE_CONFIG, process.cwd());
     const searchedConfigPaths = uniquePaths([
         ...(envConfigPath ? [envConfigPath] : []),
         preferredConfigPath,
+        ...(legacyLocalConfigPath ? [legacyLocalConfigPath] : []),
+        ...(legacyRoamingConfigPath ? [legacyRoamingConfigPath] : []),
         exeConfigPath,
     ]);
 
@@ -93,6 +109,12 @@ export const resolveStorageConfig = ({
     const defaultDataDir = platform === 'win32'
         ? path.join(preferredConfigDir, DATA_DIR_NAME)
         : path.join(exeDir, DATA_DIR_NAME);
+    const legacyLocalDataDir = platform === 'win32' && localAppDataDir
+        ? path.join(getWindowsConfigDir(localAppDataDir), DATA_DIR_NAME)
+        : '';
+    const legacyRoamingDataDir = platform === 'win32' && appDataDir
+        ? path.join(getWindowsLegacyConfigDir(appDataDir), DATA_DIR_NAME)
+        : '';
     const legacyExeDataDir = path.join(exeDir, DATA_DIR_NAME);
 
     const envDataDir = normalizeFsPath(env.WORKERBEE_DATA_DIR, process.cwd());
@@ -123,17 +145,37 @@ export const resolveStorageConfig = ({
         }
     }
 
+    const hasLegacyLocalData = !!legacyLocalDataDir && fs.existsSync(legacyLocalDataDir);
+    const hasLegacyRoamingData = !!legacyRoamingDataDir && fs.existsSync(legacyRoamingDataDir);
+
+    const useLegacyLocalData =
+        platform === 'win32' &&
+        !fs.existsSync(defaultDataDir) &&
+        hasLegacyLocalData;
+
+    const useLegacyRoamingData =
+        platform === 'win32' &&
+        !fs.existsSync(defaultDataDir) &&
+        !hasLegacyLocalData &&
+        hasLegacyRoamingData;
+
     const useLegacyExeData =
         platform === 'win32' &&
         !fs.existsSync(defaultDataDir) &&
+        !hasLegacyLocalData &&
+        !hasLegacyRoamingData &&
         fs.existsSync(legacyExeDataDir);
 
     return {
         configPath,
         preferredConfigPath,
         searchedConfigPaths,
-        dataDir: useLegacyExeData ? legacyExeDataDir : defaultDataDir,
-        dataDirSource: useLegacyExeData ? 'legacy-exe' : 'default',
+        dataDir: useLegacyLocalData
+            ? legacyLocalDataDir
+            : (useLegacyRoamingData ? legacyRoamingDataDir : (useLegacyExeData ? legacyExeDataDir : defaultDataDir)),
+        dataDirSource: useLegacyLocalData
+            ? 'legacy-local'
+            : (useLegacyRoamingData ? 'legacy-roaming' : (useLegacyExeData ? 'legacy-exe' : 'default')),
         defaultDataDir,
         legacyExeDataDir,
     };

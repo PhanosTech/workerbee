@@ -191,15 +191,23 @@ app.whenReady().then(async () => {
         if (isDev) {
             process.env.DB_PATH = path.join(__dirname, '../workbee_data');
         } else {
+            const homeDir = app.getPath('home');
+            const localAppDataDir = process.env.LOCALAPPDATA || path.join(homeDir, 'AppData', 'Local');
+            const roamingAppDataDir = process.env.APPDATA || path.join(homeDir, 'AppData', 'Roaming');
             const storage = resolveStorageConfig({
-                appDataDir: app.getPath('appData'),
+                homeDir,
+                appDataDir: roamingAppDataDir,
+                localAppDataDir,
                 exePath: process.execPath,
             });
             process.env.DB_PATH = storage.dataDir;
             process.env.WORKERBEE_LEGACY_DB_PATHS = Array.from(
                 new Set([
-                    path.join(path.dirname(process.execPath), 'workbee.json'),
                     path.join(path.dirname(storage.dataDir), 'workbee.json'),
+                    path.join(homeDir, 'workerbee', 'workbee.json'),
+                    path.join(localAppDataDir, 'workerbee', 'workbee.json'),
+                    path.join(roamingAppDataDir, 'WorkerBee', 'workbee.json'),
+                    path.join(path.dirname(process.execPath), 'workbee.json'),
                 ].map((entry) => path.normalize(entry)))
             ).join(path.delimiter);
 
