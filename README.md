@@ -50,6 +50,7 @@ If packaging fails with `Cannot create symbolic link` / `A required privilege is
   - Dev: stored in `workbee_data/` in the project root.
   - Electron production on Windows: stored in `%APPDATA%\WorkerBee\workbee_data` by default.
   - Electron production on Windows still checks `workbee_data` next to the packaged executable as a legacy fallback when the default user-data directory does not exist yet.
+  - If you still have the old single-file format (`workbee.json`), the packaged app will auto-import it on first launch from either `%APPDATA%\WorkerBee\workbee.json` or next to `WorkerBee.exe`, then rename the source file to `.bak`.
 
 ## Electron production config
 

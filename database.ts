@@ -325,6 +325,68 @@ const createEmptyState = (): AppState => ({
     task_topics: [],
 });
 
+const getStateKeys = (): (keyof AppState)[] => Object.keys(createEmptyState()) as (keyof AppState)[];
+
+const getStateFilePath = (dbDirPath: string, key: keyof AppState): string =>
+    key === 'meta'
+        ? path.join(dbDirPath, 'meta.json')
+        : path.join(dbDirPath, `${key}.json`);
+
+const hasPersistedStateFiles = (dbDirPath: string): boolean =>
+    getStateKeys().some((key) => fs.existsSync(getStateFilePath(dbDirPath, key)));
+
+const loadPersistedState = async (dbDirPath: string): Promise<any> => {
+    const loaded: any = {};
+    for (const key of getStateKeys()) {
+        const filePath = getStateFilePath(dbDirPath, key);
+        if (fs.existsSync(filePath)) {
+            const raw = await fsp.readFile(filePath, 'utf8');
+            loaded[key] = JSON.parse(raw);
+        } else {
+            loaded[key] = (createEmptyState() as any)[key];
+        }
+    }
+    return loaded;
+};
+
+const getLegacyFileCandidates = (dbDirPath: string): string[] => {
+    const envCandidates = String(process.env.WORKERBEE_LEGACY_DB_PATHS || '')
+        .split(path.delimiter)
+        .map((entry) => entry.trim())
+        .filter(Boolean);
+    const fallbackCandidate = process.env.DB_PATH
+        ? path.join(path.dirname(dbDirPath), 'workbee.json')
+        : path.join(__dirname, 'workbee.json');
+
+    const unique = new Set<string>();
+    const out: string[] = [];
+    for (const candidate of [...envCandidates, fallbackCandidate]) {
+        const normalized = path.normalize(candidate);
+        if (unique.has(normalized)) continue;
+        unique.add(normalized);
+        out.push(normalized);
+    }
+    return out;
+};
+
+const moveLegacyFileToBackup = async (legacyFilePath: string): Promise<string> => {
+    const preferredBackup = `${legacyFilePath}.bak`;
+    try {
+        await fsp.rename(legacyFilePath, preferredBackup);
+        return preferredBackup;
+    } catch (err: any) {
+        if (err && (err.code === 'EEXIST' || err.code === 'EPERM' || err.code === 'ENOTEMPTY')) {
+            const timestampedBackup = `${legacyFilePath}.bak.${Date.now()}`;
+            await fsp.rename(legacyFilePath, timestampedBackup);
+            return timestampedBackup;
+        }
+        throw err;
+    }
+};
+
+const isStateEmpty = (appState: AppState): boolean =>
+    getStateKeys().every((key) => key === 'meta' || ((appState[key] as unknown as any[])?.length ?? 0) === 0);
+
 let state: AppState | null = null;
 let initPromise: Promise<void> | null = null;
 
@@ -493,32 +555,22 @@ export const init = async (): Promise<void> => {
     initPromise = (async () => {
         let loaded: any = null;
         const dbDirPath = getDbDirPath();
-        
-        // If DB_PATH is set (standard in prod), legacy file is next to the workbee_data dir.
-        // If not set, we look in __dirname.
-        const legacyFile = process.env.DB_PATH 
-            ? path.join(path.dirname(process.env.DB_PATH), 'workbee.json')
-            : path.join(__dirname, 'workbee.json');
+        const dataDirHasFiles = hasPersistedStateFiles(dbDirPath);
+        const legacyFile = getLegacyFileCandidates(dbDirPath).find((candidate) => fs.existsSync(candidate));
+        const persistedState = dataDirHasFiles
+            ? migrateInPlace(await loadPersistedState(dbDirPath))
+            : null;
+        const shouldUseLegacyFile = !!legacyFile && (!persistedState || isStateEmpty(persistedState));
 
-        const dataDirExists = fs.existsSync(dbDirPath);
-        const legacyFileExists = fs.existsSync(legacyFile);
-
-        if (legacyFileExists && !dataDirExists) {
+        if (shouldUseLegacyFile && legacyFile) {
             const raw = await fsp.readFile(legacyFile, 'utf8');
             loaded = JSON.parse(raw);
-            await fsp.rename(legacyFile, `${legacyFile}.bak`);
-        } else if (dataDirExists) {
-            loaded = {};
-            const keys = Object.keys(createEmptyState()) as (keyof AppState)[];
-            for (const key of keys) {
-                const filePath = path.join(dbDirPath, `${key}.json`);
-                if (fs.existsSync(filePath)) {
-                    const raw = await fsp.readFile(filePath, 'utf8');
-                    loaded[key] = JSON.parse(raw);
-                } else {
-                    loaded[key] = (createEmptyState() as any)[key];
-                }
-            }
+            const backupPath = await moveLegacyFileToBackup(legacyFile);
+            console.log(`[workbee] Migrated legacy data file ${legacyFile} to ${dbDirPath} (backup: ${backupPath})`);
+        } else if (persistedState) {
+            state = persistedState;
+            await persist();
+            return;
         } else {
             loaded = createEmptyState();
         }

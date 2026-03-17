@@ -196,6 +196,12 @@ app.whenReady().then(async () => {
                 exePath: process.execPath,
             });
             process.env.DB_PATH = storage.dataDir;
+            process.env.WORKERBEE_LEGACY_DB_PATHS = Array.from(
+                new Set([
+                    path.join(path.dirname(process.execPath), 'workbee.json'),
+                    path.join(path.dirname(storage.dataDir), 'workbee.json'),
+                ].map((entry) => path.normalize(entry)))
+            ).join(path.delimiter);
 
             if (process.platform === 'win32' && !storage.configPath && storage.dataDirSource === 'default') {
                 try {
