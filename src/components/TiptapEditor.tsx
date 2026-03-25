@@ -149,10 +149,11 @@ const TiptapEditor: React.FC<TiptapEditorProps> = ({
                     view.dispatch(tr);
                     return true;
                 }
-                if (target.tagName === 'A') {
+                const aTarget = target.closest('a');
+                if (aTarget) {
                     if (event?.ctrlKey || event?.metaKey) {
                         event.preventDefault();
-                        const href = target.getAttribute('href');
+                        const href = aTarget.getAttribute('href');
                         if (href && window.electronAPI) {
                             window.electronAPI.openExternal(href);
                         } else if (href) {
@@ -351,6 +352,20 @@ const TiptapEditor: React.FC<TiptapEditorProps> = ({
                     >
                         ❌🔗
                     </button>
+                    {editor.isActive('link') && (
+                        <button
+                            type="button"
+                            onClick={() => {
+                                const href = editor.getAttributes('link').href;
+                                if (href) {
+                                    navigator.clipboard.writeText(href);
+                                }
+                            }}
+                            title="Copy Link"
+                        >
+                            📋
+                        </button>
+                    )}
                     <button
                         type="button"
                         onClick={() => editor.chain().focus().undo().run()}
