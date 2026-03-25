@@ -153,7 +153,11 @@ const TiptapEditor: React.FC<TiptapEditorProps> = ({
                     if (event?.ctrlKey || event?.metaKey) {
                         event.preventDefault();
                         const href = target.getAttribute('href');
-                        if (href) window.open(href, '_blank');
+                        if (href && window.electronAPI) {
+                            window.electronAPI.openExternal(href);
+                        } else if (href) {
+                            window.open(href, '_blank');
+                        }
                         return true;
                     }
                 }
