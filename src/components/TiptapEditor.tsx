@@ -123,7 +123,7 @@ const TiptapEditor: React.FC<TiptapEditorProps> = ({
                 nested: true,
             }),
             Link.configure({
-                openOnClick: !editable,
+                openOnClick: false,
                 autolink: true,
                 linkOnPaste: true,
                 validate: href =>
@@ -143,11 +143,21 @@ const TiptapEditor: React.FC<TiptapEditorProps> = ({
             handleClick: (view, pos, event) => {
                 const target = event?.target;
                 if (!(target instanceof HTMLElement)) return false;
-                if (target.tagName !== 'IMG') return false;
-                const nodePos = view.posAtDOM(target, 0);
-                const tr = view.state.tr.setSelection(NodeSelection.create(view.state.doc, nodePos));
-                view.dispatch(tr);
-                return true;
+                if (target.tagName === 'IMG') {
+                    const nodePos = view.posAtDOM(target, 0);
+                    const tr = view.state.tr.setSelection(NodeSelection.create(view.state.doc, nodePos));
+                    view.dispatch(tr);
+                    return true;
+                }
+                if (target.tagName === 'A') {
+                    if (event?.ctrlKey || event?.metaKey) {
+                        event.preventDefault();
+                        const href = target.getAttribute('href');
+                        if (href) window.open(href, '_blank');
+                        return true;
+                    }
+                }
+                return false;
             },
             handleDOMEvents: {
                 dblclick: (view, event) => {
