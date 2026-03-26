@@ -1,1 +1,11 @@
-[]
+[
+  {
+    "id": 1,
+    "task_id": 1,
+    "title": "oh lala",
+    "content": "<p>\"<strong>Fees</strong>\" (as used in the <a target=\"_blank\" rel=\"noopener noreferrer nofollow\" href=\"https://cloud.google.com/terms\">Google Cloud Terms of Service</a>) for Paid Services are as specified on our <a target=\"_blank\" rel=\"noopener noreferrer nofollow\" href=\"https://ai.google.dev/pricing\">pricing</a> page. Google may make changes to this pricing from time to time, effective 30 days after they are posted unless otherwise specified (or in the case of new Paid Services, where pricing takes effect immediately unless otherwise specified). Your continued use of the Paid Services constitutes your consent to those changes.</p><p>For clarity, these Terms do not govern your direct use of any Google Cloud Platform service (including those listed on the <a target=\"_blank\" rel=\"noopener noreferrer nofollow\" href=\"https://cloud.google.com/terms/services\">Google Cloud Services Summary</a>).</p><h2>Agentic Services</h2><p>When using agentic services, including the Computer Use API, you are solely responsible for the actions and tasks performed by the service, such as determining whether the service is appropriate for your use case, authorizing the service's access and connection to data, applications, and systems, and exercising judgment and supervision when and if the service is used in production environments. You will not automatically bypass any requests for human confirmation.</p><h2>Grounding with Google Search​​</h2><p></p><p></p><p></p><p></p><p></p><p></p><p></p><p></p><p></p>",
+    "type": "rich_text",
+    "created_at": "2026-03-26T14:51:06.957Z",
+    "updated_at": "2026-03-26T14:53:07.666Z"
+  }
+]

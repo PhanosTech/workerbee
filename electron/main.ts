@@ -160,6 +160,7 @@ function setupIpcHandlers() {
     ipcMain.handle('upsertJournalEntry', (_e: IpcMainInvokeEvent, { date, content }: { date: string, content: string }) => db.upsertJournalEntry(date, content));
 
     // Reports
+    ipcMain.handle('openExternal', (_e, url) => require('electron').shell.openExternal(url));
     ipcMain.handle('getReports', (_e: IpcMainInvokeEvent, { startDate, endDate }: { startDate?: string, endDate?: string }) => {
         const end = endDate || new Date().toISOString().split('T')[0];
         const start = startDate || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];

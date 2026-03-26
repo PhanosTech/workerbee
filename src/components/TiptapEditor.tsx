@@ -143,24 +143,26 @@ const TiptapEditor: React.FC<TiptapEditorProps> = ({
             handleClick: (view, pos, event) => {
                 const target = event?.target;
                 if (!(target instanceof HTMLElement)) return false;
+
                 if (target.tagName === 'IMG') {
                     const nodePos = view.posAtDOM(target, 0);
                     const tr = view.state.tr.setSelection(NodeSelection.create(view.state.doc, nodePos));
                     view.dispatch(tr);
                     return true;
                 }
+
                 const aTarget = target.closest('a');
-                if (aTarget) {
-                    if (event?.ctrlKey || event?.metaKey) {
-                        event.preventDefault();
-                        const href = aTarget.getAttribute('href');
-                        if (href && window.electronAPI) {
-                            window.electronAPI.openExternal(href);
-                        } else if (href) {
-                            window.open(href, '_blank');
-                        }
-                        return true;
+                if (aTarget && (event.ctrlKey || event.metaKey)) {
+                    event.preventDefault();
+                    const href = aTarget.getAttribute('href');
+                    if (!href) return true;
+                    const api = (window as any).electronAPI;
+                    if (api?.openExternal) {
+                        api.openExternal(href);
+                    } else {
+                        navigator.clipboard.writeText(href);
                     }
+                    return true;
                 }
                 return false;
             },
@@ -335,8 +337,11 @@ const TiptapEditor: React.FC<TiptapEditorProps> = ({
                         onClick={() => {
                             const previousUrl = editor.getAttributes('link').href;
                             const url = window.prompt('URL', previousUrl || '');
-                            if (url) {
-                                editor.chain().focus().setLink({ href: url }).run()
+                            if (url === null) return;
+                            if (url === '') {
+                                editor.chain().focus().unsetLink().run();
+                            } else {
+                                editor.chain().focus().setMark('link', { href: url }).run();
                             }
                         }}
                         className={editor.isActive('link') ? 'is-active' : ''}

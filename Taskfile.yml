@@ -13,10 +13,11 @@ tasks:
       - echo "Checking Taskfile... use 'task --list' to see available tasks"
 
   clean:
-    desc: Clean build outputs (bin/, dist/, build-output/)
+    desc: Kill dev processes, clear caches, and build outputs
     cmds:
-      - >-
-        {{.NODE}} -e "const fs=require('fs'); const path=require('path'); const targets=['bin','dist','build-output','dist-ssr']; for (const t of targets){ try{ fs.rmSync(path.join(process.cwd(),t), {recursive:true, force:true}); } catch(e){} } console.log('Cleaned: ' + targets.join(', '));"
+      - pkill -f "vite|electron|node.*dev" 2>/dev/null || true
+      - rm -rf node_modules/.vite dist build-output bin dist-ssr
+      - echo "Cleaned caches and build outputs"
 
   nuke:
     desc: Force-kill any running app processes and deep-clean

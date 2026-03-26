@@ -5,14 +5,14 @@
     "tasks": 1,
     "todos": 4,
     "logs": 0,
-    "notes": 0,
+    "notes": 1,
     "label_notes": 1,
     "weekly_notes": 0,
     "journal_entries": 2,
-    "topics": 0,
+    "topics": 1,
     "topic_todos": 0,
     "topic_logs": 0,
-    "topic_notes": 0,
+    "topic_notes": 1,
     "task_topics": 0
   }
 }

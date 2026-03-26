@@ -908,6 +908,7 @@ select:focus-visible {
 .notes-sidebar-content,
 .note-editor-wrapper .tiptap-content,
 .journal-editor .tiptap-content {
+    flex: 1;
     min-height: 0;
     overflow: auto;
 }
@@ -1193,6 +1194,12 @@ select:focus-visible {
     flex: 1;
     display: flex;
     flex-direction: column;
+}
+
+.note-modal .tiptap-content {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
 }
 
 .copy-to-folder-status {
