@@ -9,12 +9,18 @@ export interface Category {
     task_count_total?: number;
 }
 
+export interface ExternalLink {
+    label: string;
+    url: string;
+}
+
 export interface Task {
     id: number;
     category_id: number | null;
     title: string;
     description: string | null;
     url: string | null;
+    links?: ExternalLink[];
     task_type: string;
     story_points: number;
     priority: string;
@@ -107,6 +113,10 @@ export interface Topic {
     description: string;
     status: string;
     tags: string;
+    links?: ExternalLink[];
+    category_ids?: number[];
+    category_labels?: string[];
+    thread_date?: string | null;
     position?: number;
     archived: number;
     archived_at?: string | null;
@@ -221,8 +231,8 @@ export const api = {
     getTasks: (filters: TaskFilters = {}): Promise<Task[]> => invoke('getTasks', filters),
     getTask: (id: number): Promise<Task | null> => invoke('getTask', id),
     getNote: (id: number): Promise<TaskNote | null> => invoke('getNote', id),
-    createTask: (category_id: number | null, title: string, description: string | null, url: string | null): Promise<ChangesResponse> => 
-        invoke('createTask', { category_id, title, description, url }),
+    createTask: (category_id: number | null, title: string, description: string | null, url: string | null, links?: ExternalLink[]): Promise<ChangesResponse> => 
+        invoke('createTask', { category_id, title, description, url, links }),
     updateTask: (id: number, data: Partial<Task>): Promise<ChangesResponse> => invoke('updateTask', { id, data }),
     archiveTask: (id: number): Promise<ChangesResponse> => invoke('archiveTask', id),
     archiveDoneTasks: (): Promise<ChangesResponse> => invoke('archiveDoneTasks'),

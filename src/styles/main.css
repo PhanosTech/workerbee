@@ -950,6 +950,61 @@ select:focus-visible {
     font-weight: 700;
 }
 
+.thread-title-cell {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.thread-title-text {
+    min-width: 0;
+}
+
+.thread-link-tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 9px;
+    border-radius: 999px;
+    border: 1px solid var(--border-subtle);
+    background: var(--panel-bg-3);
+    color: var(--accent-color);
+    font-size: 0.74rem;
+    font-weight: 800;
+    margin-right: 0;
+}
+
+.thread-link-tag:hover {
+    background: var(--control-bg-hover);
+}
+
+.thread-folder-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.thread-folder-tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 9px;
+    border-radius: 999px;
+    border: 1px solid var(--border-subtle);
+    background: var(--panel-bg-3);
+    color: var(--text-muted);
+    font-size: 0.74rem;
+    font-weight: 700;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.thread-date-cell {
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
 .tasks-actions {
     display: flex;
     align-items: center;
@@ -1031,6 +1086,50 @@ select:focus-visible {
     display: flex;
     gap: 10px;
     align-items: center;
+}
+
+.external-links-editor {
+    display: grid;
+    gap: 10px;
+}
+
+.external-links-list {
+    display: grid;
+    gap: 10px;
+}
+
+.external-link-row {
+    display: grid;
+    gap: 8px;
+    padding: 10px;
+    border-radius: 10px;
+    border: 1px solid var(--border-faint);
+    background: var(--panel-bg-2);
+}
+
+.external-link-grid {
+    display: grid;
+    grid-template-columns: minmax(150px, 0.42fr) minmax(0, 1fr);
+    gap: 8px;
+}
+
+.external-link-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+.external-links-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.external-links-footer button {
+    margin-right: 0;
 }
 
 .todo-list,
@@ -1530,6 +1629,13 @@ select:focus-visible {
     align-items: center;
 }
 
+.topics-page {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+}
+
 .notes-page {
     height: 100%;
     min-height: 0;
@@ -1760,6 +1866,82 @@ select:focus-visible {
 
 .linked-topic-button:hover {
     background: var(--control-bg);
+}
+
+.selected-folder-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.selected-folder-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--border-subtle);
+    background: var(--panel-bg-3);
+    margin-right: 0;
+}
+
+.selected-folder-tag:hover {
+    background: var(--control-bg-hover);
+}
+
+.topic-folder-selector {
+    display: grid;
+    gap: 8px;
+    max-height: 260px;
+    overflow: auto;
+    padding-right: 4px;
+}
+
+.topic-folder-option {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: 10px;
+    border: 1px solid var(--border-faint);
+    background: var(--panel-bg-2);
+    cursor: pointer;
+    text-transform: none;
+    letter-spacing: normal;
+    color: var(--text-color);
+    font-size: 0.88rem;
+    font-weight: 500;
+    margin-bottom: 0;
+}
+
+.topic-folder-option:hover,
+.topic-folder-option.selected {
+    background: var(--control-bg);
+    border-color: var(--border-strong);
+}
+
+.topic-folder-option input {
+    width: auto;
+    margin: 3px 0 0;
+}
+
+.topic-folder-option-main {
+    min-width: 0;
+    display: grid;
+    gap: 2px;
+}
+
+.topic-folder-option-name {
+    font-weight: 800;
+}
+
+.topic-folder-option-path {
+    font-size: 0.78rem;
+    opacity: 0.68;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .topic-notes-empty {
@@ -2021,6 +2203,10 @@ select:focus-visible {
     }
 
     .task-modal-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .external-link-grid {
         grid-template-columns: 1fr;
     }
 

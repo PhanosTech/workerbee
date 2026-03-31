@@ -81,6 +81,7 @@ describe('database.ts test suite', () => {
         expect(task).toBeDefined();
         expect(task?.category_id).toBe(catId);
         expect(task?.description).toBe('Description');
+        expect(task?.links).toEqual([{ label: 'example.com', url: 'http://example.com' }]);
     });
 
     it('should verify JSON splitting logic (separate files written)', async () => {
@@ -133,7 +134,17 @@ describe('database.ts test suite', () => {
     it('should return searchable thread notes with editable dates and topic worklog edits', async () => {
         await db.init();
 
-        const { lastInsertRowid: topicId } = await db.createTopic('Email Thread', 'Follow-up thread', 'BACKLOG', 'email');
+        const { lastInsertRowid: rootFolderId } = await db.createCategory(null, 'Projects', '#89b4fa');
+        const { lastInsertRowid: subFolderId } = await db.createCategory(Number(rootFolderId), 'Alpha', '#74c7ec');
+
+        const { lastInsertRowid: topicId } = await db.createTopic(
+            'Email Thread',
+            'Follow-up thread',
+            'BACKLOG',
+            'email',
+            [{ label: 'Inbox', url: 'https://mail.example.com/thread/1' }],
+            [Number(rootFolderId), Number(subFolderId)]
+        );
         const { lastInsertRowid: noteId } = await db.addTopicNote(Number(topicId), 'Thread recap', '<p>Summary</p>', 'rich_text');
         const topicNotes = await db.getAllTopicNotes();
         const createdNote = topicNotes.find((note) => note.id === Number(noteId));
@@ -145,6 +156,12 @@ describe('database.ts test suite', () => {
         const datedNotes = await db.getAllTopicNotes({ startDate: '2024-01-15', endDate: '2024-01-15' });
         const editedNote = datedNotes.find((note) => note.id === Number(noteId));
         expect(editedNote?.created_at.startsWith('2024-01-15')).toBe(true);
+
+        const topic = await db.getTopic(Number(topicId));
+        expect(topic?.links).toEqual([{ label: 'Inbox', url: 'https://mail.example.com/thread/1' }]);
+        expect(topic?.category_ids).toEqual([Number(rootFolderId), Number(subFolderId)]);
+        expect(topic?.category_labels).toEqual(['Projects', 'Projects > Alpha']);
+        expect(topic?.thread_date?.startsWith('2024-01-15')).toBe(true);
 
         const searchResults = await db.search('late import inbox', 10);
         expect(searchResults.some((result) => result.type === 'thread' && result.id === Number(topicId))).toBe(true);

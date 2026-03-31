@@ -1,7 +1,9 @@
 import React, { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
-import { api, SearchResult, Task, Topic, TopicLog, TopicNote } from '../api';
+import { api, Category, SearchResult, Task, Topic, TopicLog, TopicNote } from '../api';
 import TiptapEditor from './TiptapEditor';
+import ExternalLinksEditor from './ExternalLinksEditor';
 import { dateInputToIso, formatDateTime, htmlToPlainText, normalizeNoteContent, toDateInputValue } from '../utils/noteUtils';
+import { normalizeExternalLinks } from '../utils/linkUtils';
 
 interface TopicModalProps {
     topicId: number | null;
@@ -12,6 +14,14 @@ interface TopicModalProps {
 type TopicTab = 'notes' | 'details' | 'tasks' | 'logs';
 
 type LinkedTaskItem = Pick<Task, 'id' | 'title' | 'status' | 'category_id' | 'archived'>;
+
+interface FolderOption {
+    id: number;
+    name: string;
+    path: string;
+    depth: number;
+    color: string | null;
+}
 
 const formatTaskStatus = (status: string | null | undefined) => {
     const normalized = String(status || 'BACKLOG').trim().toUpperCase();
@@ -34,7 +44,22 @@ const EMPTY_TOPIC_DRAFT: Partial<Topic> = {
     description: '',
     status: 'BACKLOG',
     tags: '',
+    links: [],
+    category_ids: [],
 };
+
+const normalizeTopicDraft = (topic: Partial<Topic> | null | undefined): Partial<Topic> => ({
+    ...EMPTY_TOPIC_DRAFT,
+    ...(topic || {}),
+    links: normalizeExternalLinks(topic?.links),
+    category_ids: Array.from(
+        new Set(
+            (Array.isArray(topic?.category_ids) ? topic?.category_ids : [])
+                .map((categoryId) => Number(categoryId))
+                .filter((categoryId) => Number.isFinite(categoryId) && categoryId > 0)
+        )
+    ),
+});
 
 const TopicModal: React.FC<TopicModalProps> = ({ topicId, onClose, onUpdate }) => {
     const [topic, setTopic] = useState<Partial<Topic> | null>(null);
@@ -52,6 +77,7 @@ const TopicModal: React.FC<TopicModalProps> = ({ topicId, onClose, onUpdate }) =
     const [taskQuery, setTaskQuery] = useState('');
     const [taskSearchResults, setTaskSearchResults] = useState<SearchResult[]>([]);
     const [taskSearchLoading, setTaskSearchLoading] = useState(false);
+    const [categories, setCategories] = useState<Category[]>([]);
 
     const topicRef = useRef<Partial<Topic> | null>(null);
     const selectedNoteRef = useRef<TopicNote | null>(null);
@@ -109,7 +135,17 @@ const TopicModal: React.FC<TopicModalProps> = ({ topicId, onClose, onUpdate }) =
             setTaskSearchLoading(false);
 
             if (!topicId) {
-                setTopic({ ...EMPTY_TOPIC_DRAFT });
+                try {
+                    const categoryData = await api.getCategories();
+                    if (cancelled) return;
+                    setCategories(categoryData || []);
+                } catch (err) {
+                    if (!cancelled) {
+                        console.error(err);
+                        setCategories([]);
+                    }
+                }
+                setTopic(normalizeTopicDraft(EMPTY_TOPIC_DRAFT));
                 setLogs([]);
                 setNotes([]);
                 setSelectedNote(null);
@@ -119,11 +155,12 @@ const TopicModal: React.FC<TopicModalProps> = ({ topicId, onClose, onUpdate }) =
 
             setLoading(true);
             try {
-                const [topicData, topicLogs, topicNotes, topicTasks] = await Promise.all([
+                const [topicData, topicLogs, topicNotes, topicTasks, categoryData] = await Promise.all([
                     api.getTopic(topicId),
                     api.getTopicLogs(topicId),
                     api.getTopicNotes(topicId),
                     api.getTopicTasks(topicId),
+                    api.getCategories(),
                 ]);
                 if (cancelled) return;
 
@@ -132,15 +169,19 @@ const TopicModal: React.FC<TopicModalProps> = ({ topicId, onClose, onUpdate }) =
                     content: normalizeNoteContent(note.content),
                 }));
 
-                setTopic(topicData || { ...EMPTY_TOPIC_DRAFT });
+                setTopic(normalizeTopicDraft(topicData));
                 setLogs(topicLogs || []);
                 setNotes(normalizedNotes);
                 setSelectedNote(normalizedNotes[0] || null);
                 setLinkedTasks((topicTasks || []).map((task) => toLinkedTaskItem(task)));
+                setCategories(categoryData || []);
                 setTopicDirty(false);
                 setTaskLinksDirty(false);
             } catch (err) {
-                if (!cancelled) console.error(err);
+                if (!cancelled) {
+                    console.error(err);
+                    setCategories([]);
+                }
             } finally {
                 if (!cancelled) setLoading(false);
             }
@@ -167,6 +208,76 @@ const TopicModal: React.FC<TopicModalProps> = ({ topicId, onClose, onUpdate }) =
         [linkedTasks]
     );
 
+    const orderedFolderOptions = useMemo<FolderOption[]>(() => {
+        const byParent = new Map<number | null, Category[]>();
+        categories.forEach((category) => {
+            const key = category.parent_id ?? null;
+            const siblings = byParent.get(key) || [];
+            siblings.push(category);
+            byParent.set(key, siblings);
+        });
+
+        const sortCategories = (a: Category, b: Category) => {
+            const ap = Number(a.position ?? 0);
+            const bp = Number(b.position ?? 0);
+            if (ap !== bp) return ap - bp;
+            return String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' });
+        };
+
+        for (const [key, siblings] of byParent.entries()) {
+            byParent.set(key, siblings.slice().sort(sortCategories));
+        }
+
+        const out: FolderOption[] = [];
+        const walk = (parentId: number | null, depth: number, ancestors: string[]) => {
+            const siblings = byParent.get(parentId) || [];
+            siblings.forEach((category) => {
+                const path = [...ancestors, category.name || `Folder #${category.id}`].join(' > ');
+                out.push({
+                    id: category.id,
+                    name: category.name || `Folder #${category.id}`,
+                    path,
+                    depth,
+                    color: category.color || null,
+                });
+                walk(category.id, depth + 1, [...ancestors, category.name || `Folder #${category.id}`]);
+            });
+        };
+
+        walk(null, 0, []);
+        return out;
+    }, [categories]);
+
+    const selectedFolderIdSet = useMemo(
+        () =>
+            new Set(
+                (Array.isArray(topic?.category_ids) ? topic?.category_ids : [])
+                    .map((categoryId) => Number(categoryId))
+                    .filter((categoryId) => Number.isFinite(categoryId) && categoryId > 0)
+            ),
+        [topic?.category_ids]
+    );
+
+    const selectedFolderOptions = useMemo(
+        () => orderedFolderOptions.filter((option) => selectedFolderIdSet.has(option.id)),
+        [orderedFolderOptions, selectedFolderIdSet]
+    );
+
+    const buildTopicSavePayload = (draft: Partial<Topic>) => ({
+        title: String(draft.title || ''),
+        description: draft.description || '',
+        status: draft.status || 'BACKLOG',
+        tags: draft.tags || '',
+        links: normalizeExternalLinks(draft.links),
+        category_ids: Array.from(
+            new Set(
+                (Array.isArray(draft.category_ids) ? draft.category_ids : [])
+                    .map((categoryId) => Number(categoryId))
+                    .filter((categoryId) => Number.isFinite(categoryId) && categoryId > 0)
+            )
+        ),
+    });
+
     const ensureTopicPersisted = async (): Promise<Topic | null> => {
         const current = topicRef.current;
         if (!current) return null;
@@ -175,12 +286,12 @@ const TopicModal: React.FC<TopicModalProps> = ({ topicId, onClose, onUpdate }) =
 
         pendingCreateRef.current = (async () => {
             try {
-                const result = await api.createTopic(current);
+                const result = await api.createTopic(buildTopicSavePayload(current));
                 const createdId = Number(result.lastInsertRowid);
                 if (!createdId) return null;
                 const created = await api.getTopic(createdId);
                 if (!created) return null;
-                setTopic(created);
+                setTopic(normalizeTopicDraft(created));
                 setTopicDirty(false);
                 onUpdate();
                 return created;
@@ -247,9 +358,9 @@ const TopicModal: React.FC<TopicModalProps> = ({ topicId, onClose, onUpdate }) =
 
             if (current.id) {
                 if (topicDirty) {
-                    await api.updateTopic(current.id, current);
+                    await api.updateTopic(current.id, buildTopicSavePayload(current));
                     const refreshed = await api.getTopic(current.id);
-                    if (refreshed) setTopic(refreshed);
+                    if (refreshed) setTopic(normalizeTopicDraft(refreshed));
                     savedTopic = refreshed || ({ ...(current as Topic) });
                     setTopicDirty(false);
                     didUpdate = true;
@@ -407,6 +518,14 @@ const TopicModal: React.FC<TopicModalProps> = ({ topicId, onClose, onUpdate }) =
     const handleUnlinkTask = (taskId: number) => {
         setLinkedTasks((prev) => prev.filter((task) => Number(task.id) !== Number(taskId)));
         setTaskLinksDirty(true);
+    };
+
+    const handleToggleFolder = (categoryId: number) => {
+        const currentIds = Array.isArray(topic?.category_ids) ? topic.category_ids : [];
+        const nextIds = currentIds.includes(categoryId)
+            ? currentIds.filter((id) => Number(id) !== Number(categoryId))
+            : [...currentIds, categoryId];
+        updateTopicDraft({ category_ids: nextIds });
     };
 
     useEffect(() => {
@@ -593,13 +712,62 @@ const TopicModal: React.FC<TopicModalProps> = ({ topicId, onClose, onUpdate }) =
                                 </select>
                             </section>
                             <section>
-                                <label>Tags (comma separated)</label>
-                                <input
-                                    type="text"
-                                    value={topic.tags || ''}
-                                    onChange={(e) => updateTopicDraft({ tags: e.target.value })}
-                                    placeholder="email, client, escalation"
+                                <label>Links</label>
+                                <ExternalLinksEditor
+                                    links={topic.links}
+                                    onChange={(links) => updateTopicDraft({ links })}
                                 />
+                            </section>
+                            <section>
+                                <label>Backlog Folders</label>
+                                {selectedFolderOptions.length > 0 ? (
+                                    <div className="selected-folder-tags">
+                                        {selectedFolderOptions.map((folder) => (
+                                            <button
+                                                key={folder.id}
+                                                type="button"
+                                                className="selected-folder-tag"
+                                                title={folder.path}
+                                                onClick={() => handleToggleFolder(folder.id)}
+                                            >
+                                                <span className="cat-color-dot" style={{ backgroundColor: folder.color || '#89b4fa' }} />
+                                                <span>{folder.path}</span>
+                                                <span aria-hidden="true">×</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="muted" style={{ fontSize: '0.82rem', marginBottom: 10 }}>
+                                        No backlog folders tagged yet.
+                                    </div>
+                                )}
+
+                                {orderedFolderOptions.length > 0 ? (
+                                    <div className="topic-folder-selector" role="list" aria-label="Available backlog folders">
+                                        {orderedFolderOptions.map((folder) => (
+                                            <label
+                                                key={folder.id}
+                                                className={`topic-folder-option ${selectedFolderIdSet.has(folder.id) ? 'selected' : ''}`}
+                                                style={{ paddingLeft: `${12 + folder.depth * 18}px` }}
+                                            >
+                                                <input
+                                                    type="checkbox"
+                                                    checked={selectedFolderIdSet.has(folder.id)}
+                                                    onChange={() => handleToggleFolder(folder.id)}
+                                                />
+                                                <span className="cat-color-dot" style={{ backgroundColor: folder.color || '#89b4fa' }} />
+                                                <span className="topic-folder-option-main">
+                                                    <span className="topic-folder-option-name">{folder.name}</span>
+                                                    <span className="topic-folder-option-path">{folder.path}</span>
+                                                </span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="muted" style={{ fontSize: '0.82rem' }}>
+                                        Create backlog folders first to tag this thread.
+                                    </div>
+                                )}
                             </section>
                         </div>
                     ) : null}

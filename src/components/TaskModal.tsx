@@ -2,7 +2,9 @@ import React, { useMemo, useState, useEffect, useRef, FormEvent, DragEvent, Keyb
 import { api, Task, Todo, Log, Note, Category, Topic } from '../api';
 import TiptapEditor from './TiptapEditor';
 import TopicModal from './TopicModal';
+import ExternalLinksEditor from './ExternalLinksEditor';
 import { formatDateTime, htmlToPlainText, isEmptyHtml, normalizeNoteContent } from '../utils/noteUtils';
+import { getPrimaryExternalUrl, normalizeExternalLinks } from '../utils/linkUtils';
 
 const moveBefore = <T extends { id: number | string }>(items: T[], movingId: number | string, targetId: number | string): T[] => {
     const fromIndex = items.findIndex((t) => t.id === movingId);
@@ -160,11 +162,13 @@ const TaskModal: React.FC<TaskModalProps> = ({ taskId, onClose, onUpdate }) => {
     const handleSaveTask = async (updates: Partial<Task> = {}) => {
         if (!task) return;
         const nextTask = { ...task, ...updates };
+        const normalizedLinks = normalizeExternalLinks(nextTask.links, nextTask.url);
         await api.updateTask(task.id, {
             category_id: nextTask.category_id,
             title: nextTask.title,
             description: nextTask.description,
-            url: nextTask.url,
+            url: getPrimaryExternalUrl(normalizedLinks),
+            links: normalizedLinks,
             status: nextTask.status,
             story_points: nextTask.story_points,
             priority: nextTask.priority,
@@ -401,11 +405,13 @@ const TaskModal: React.FC<TaskModalProps> = ({ taskId, onClose, onUpdate }) => {
                             </div>
                         </section>
                         <section>
-                            <label>URL</label>
-                            <input
-                                type="text"
-                                value={task.url || ''}
-                                onChange={(e) => updateTaskDraft({ url: e.target.value })}
+                            <label>Links</label>
+                            <ExternalLinksEditor
+                                links={task.links}
+                                onChange={(links) => updateTaskDraft({
+                                    links,
+                                    url: getPrimaryExternalUrl(normalizeExternalLinks(links)),
+                                })}
                             />
                         </section>
                         <section>

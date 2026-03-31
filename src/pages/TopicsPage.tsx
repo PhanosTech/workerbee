@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { api, Topic } from '../api';
 import TopicModal from '../components/TopicModal';
 import type { ThreadFocus } from '../App';
+import { getExternalLinkLabel, openExternalUrl } from '../utils/linkUtils';
 
 type TopicView = 'active' | 'in-progress' | 'done' | 'archived';
 
@@ -19,6 +20,18 @@ const nextThreadStatus = (status: string | null | undefined) => {
     if (status === 'BACKLOG') return 'IN_PROGRESS';
     if (status === 'IN_PROGRESS') return 'DONE';
     return 'BACKLOG';
+};
+
+const formatThreadDate = (value: string | null | undefined) => {
+    const raw = String(value || '').trim();
+    if (!raw) return '—';
+    const date = new Date(raw);
+    if (Number.isNaN(date.getTime())) return raw;
+    return new Intl.DateTimeFormat(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+    }).format(date);
 };
 
 const moveBefore = <T extends { id: number }>(items: T[], movingId: number, targetId: number): T[] => {
@@ -160,8 +173,8 @@ const TopicsPage: React.FC<TopicsPageProps> = ({ focus }) => {
                             <th style={{ width: 40 }} />
                             <th>Title</th>
                             <th>Status</th>
-                            <th>Tags</th>
-                            <th style={{ width: 120 }}>Actions</th>
+                            <th>Folders</th>
+                            <th style={{ width: 150 }}>Date</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -183,7 +196,25 @@ const TopicsPage: React.FC<TopicsPageProps> = ({ focus }) => {
                                 <td onClick={(e) => e.stopPropagation()}>
                                     <span className={`drag-handle ${canSort ? '' : 'disabled'}`}>⋮⋮</span>
                                 </td>
-                                <td className="tasks-title">{topic.title}</td>
+                                <td className="tasks-title">
+                                    <div className="thread-title-cell">
+                                        <span className="thread-title-text">{topic.title}</span>
+                                        {(topic.links || []).map((link, index) => (
+                                            <button
+                                                key={`${topic.id}-${link.url}-${index}`}
+                                                type="button"
+                                                className="thread-link-tag"
+                                                title={link.url}
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    openExternalUrl(link.url);
+                                                }}
+                                            >
+                                                {getExternalLinkLabel(link, `Link ${index + 1}`)}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </td>
                                 <td className="tasks-status">
                                     <button
                                         type="button"
@@ -194,10 +225,20 @@ const TopicsPage: React.FC<TopicsPageProps> = ({ focus }) => {
                                         {formatThreadStatus(topic.status)}
                                     </button>
                                 </td>
-                                <td>{topic.tags || '—'}</td>
-                                <td className="tasks-actions" onClick={(e) => e.stopPropagation()}>
-                                    <button className="primary-btn" onClick={() => handleOpenTopic(topic.id)}>Open</button>
+                                <td>
+                                    {topic.category_labels?.length ? (
+                                        <div className="thread-folder-tags">
+                                            {topic.category_labels.map((folderLabel) => (
+                                                <span key={`${topic.id}-${folderLabel}`} className="thread-folder-tag" title={folderLabel}>
+                                                    {folderLabel}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        '—'
+                                    )}
                                 </td>
+                                <td className="thread-date-cell">{formatThreadDate(topic.thread_date || topic.created_at)}</td>
                             </tr>
                         ))}
                     </tbody>

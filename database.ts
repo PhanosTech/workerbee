@@ -14,12 +14,18 @@ export interface Category {
     task_count_total?: number;
 }
 
+export interface ExternalLink {
+    label: string;
+    url: string;
+}
+
 export interface Task {
     id: number;
     category_id: number | null;
     title: string;
     description: string | null;
     url: string | null;
+    links?: ExternalLink[];
     due_date?: string | null;
     task_type: string;
     story_points: number;
@@ -106,6 +112,10 @@ export interface Topic {
     description: string;
     status: string;
     tags: string;
+    links?: ExternalLink[];
+    category_ids?: number[];
+    category_labels?: string[];
+    thread_date?: string | null;
     position?: number;
     archived: number;
     archived_at?: string | null;
@@ -148,6 +158,12 @@ export interface TaskTopic {
     topic_id: number;
 }
 
+export interface TopicCategory {
+    id: number;
+    topic_id: number;
+    category_id: number;
+}
+
 export interface LastId {
     categories: number;
     tasks: number;
@@ -162,6 +178,7 @@ export interface LastId {
     topic_logs: number;
     topic_notes: number;
     task_topics: number;
+    topic_categories: number;
 }
 
 export interface Meta {
@@ -184,6 +201,7 @@ export interface AppState {
     topic_logs: TopicLog[];
     topic_notes: TopicNote[];
     task_topics: TaskTopic[];
+    topic_categories: TopicCategory[];
 }
 
 const getDbDirPath = (): string => {
@@ -269,6 +287,180 @@ const normalizeStoryPoints = (value: any, fallback: number): number => {
     return Number.isFinite(n) ? n : fallback;
 };
 
+const MAX_EXTERNAL_LINKS = 3;
+const EXTERNAL_PROTOCOL_RE = /^[a-z][a-z0-9+.-]*:/i;
+
+const parseNumericIdList = (values: unknown): number[] =>
+    Array.from(
+        new Set(
+            (Array.isArray(values) ? values : [])
+                .map((value) => Number(value))
+                .filter((value) => Number.isFinite(value) && value > 0)
+        )
+    );
+
+const guessExternalLinkLabel = (url: string, fallback = 'Link'): string => {
+    const trimmed = String(url || '').trim();
+    if (!trimmed) return fallback;
+    const candidate = EXTERNAL_PROTOCOL_RE.test(trimmed) ? trimmed : `https://${trimmed}`;
+    try {
+        const parsed = new URL(candidate);
+        const host = parsed.host.replace(/^www\./i, '');
+        if (host) return host;
+    } catch {
+        // Ignore malformed URLs and fall back to a readable string.
+    }
+    const compact = trimmed
+        .replace(/^https?:\/\//i, '')
+        .replace(/^www\./i, '')
+        .replace(/\/$/, '');
+    if (!compact) return fallback;
+    return compact.length > 28 ? `${compact.slice(0, 25)}...` : compact;
+};
+
+const normalizeExternalLinks = (links: unknown, legacyUrl?: string | null): ExternalLink[] => {
+    const normalized: ExternalLink[] = [];
+    const seen = new Set<string>();
+    const candidates = Array.isArray(links) ? links : [];
+
+    const pushLink = (rawLabel: unknown, rawUrl: unknown) => {
+        if (normalized.length >= MAX_EXTERNAL_LINKS) return;
+        const url = String(rawUrl || '').trim();
+        if (!url) return;
+        const label = String(rawLabel || '').trim() || guessExternalLinkLabel(url, `Link ${normalized.length + 1}`);
+        const key = `${label.toLowerCase()}|${url.toLowerCase()}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        normalized.push({ label, url });
+    };
+
+    candidates.forEach((entry) => {
+        if (entry && typeof entry === 'object') {
+            const record = entry as Record<string, unknown>;
+            pushLink(record.label, record.url);
+            return;
+        }
+        if (typeof entry === 'string') {
+            pushLink('', entry);
+        }
+    });
+
+    if (!Array.isArray(links) || candidates.length === 0) {
+        pushLink('', legacyUrl);
+    }
+
+    return normalized;
+};
+
+const firstExternalLinkUrl = (links: ExternalLink[] | null | undefined): string | null =>
+    links && links.length > 0 ? links[0].url : null;
+
+const externalLinksToSearchText = (links: ExternalLink[] | null | undefined): string =>
+    (links || [])
+        .map((link) => `${String(link.label || '').trim()} ${String(link.url || '').trim()}`.trim())
+        .filter(Boolean)
+        .join(' ');
+
+const getCategoryTrail = (categoryById: Map<number, Category>, categoryId: number): Category[] => {
+    const parts: Category[] = [];
+    const seen = new Set<number>();
+    let current: Category | undefined = categoryById.get(Number(categoryId));
+    while (current && !seen.has(current.id)) {
+        parts.unshift(current);
+        seen.add(current.id);
+        current = current.parent_id ? categoryById.get(Number(current.parent_id)) : undefined;
+    }
+    return parts;
+};
+
+const getCategoryPathLabel = (categoryById: Map<number, Category>, categoryId: number): string => {
+    const trail = getCategoryTrail(categoryById, categoryId);
+    return trail.map((category) => category.name).filter(Boolean).join(' > ');
+};
+
+const buildTopicCategoryIndex = (st: AppState): Map<number, number[]> => {
+    const topicCategories = new Map<number, number[]>();
+    const seen = new Set<string>();
+    st.topic_categories.forEach((entry) => {
+        const topicId = Number(entry?.topic_id);
+        const categoryId = Number(entry?.category_id);
+        if (!Number.isFinite(topicId) || !Number.isFinite(categoryId) || topicId <= 0 || categoryId <= 0) return;
+        const key = `${topicId}:${categoryId}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        const list = topicCategories.get(topicId) || [];
+        list.push(categoryId);
+        topicCategories.set(topicId, list);
+    });
+    return topicCategories;
+};
+
+const buildTopicThreadDateIndex = (st: AppState): Map<number, string> => {
+    const topicDates = new Map<number, string>();
+    st.topic_notes.forEach((note) => {
+        const topicId = Number(note?.topic_id);
+        const createdAt = String(note?.created_at || '').trim();
+        if (!Number.isFinite(topicId) || topicId <= 0 || !createdAt) return;
+        const current = topicDates.get(topicId);
+        if (!current || createdAt.localeCompare(current) > 0) {
+            topicDates.set(topicId, createdAt);
+        }
+    });
+    return topicDates;
+};
+
+const replaceTopicCategoryLinks = (st: AppState, topicId: number, categoryIds: number[]) => {
+    const normalizedTopicId = Number(topicId);
+    const validCategoryIds = new Set(
+        st.categories
+            .filter((category) => !category.archived)
+            .map((category) => Number(category.id))
+            .filter((id) => Number.isFinite(id) && id > 0)
+    );
+    const uniqueCategoryIds = parseNumericIdList(categoryIds).filter((categoryId) => validCategoryIds.has(categoryId));
+
+    st.topic_categories = st.topic_categories.filter((entry) => Number(entry.topic_id) !== normalizedTopicId);
+
+    uniqueCategoryIds.forEach((categoryId) => {
+        const id = bumpId('topic_categories');
+        st.topic_categories.push({
+            id,
+            topic_id: normalizedTopicId,
+            category_id: categoryId,
+        });
+    });
+};
+
+const decorateTopic = (
+    st: AppState,
+    topic: Topic,
+    options: {
+        topicCategoryIds?: Map<number, number[]>;
+        topicThreadDates?: Map<number, string>;
+        categoryById?: Map<number, Category>;
+    } = {}
+): Topic => {
+    const links = normalizeExternalLinks(topic.links);
+    const categoryById = options.categoryById || new Map<number, Category>(
+        st.categories
+            .filter((category) => !category.archived)
+            .map((category) => [Number(category.id), category])
+    );
+    const rawCategoryIds = options.topicCategoryIds?.get(Number(topic.id)) || [];
+    const categoryIds = rawCategoryIds.filter((categoryId) => categoryById.has(Number(categoryId)));
+    const categoryLabels = categoryIds
+        .map((categoryId) => getCategoryPathLabel(categoryById, categoryId))
+        .filter(Boolean);
+
+    return {
+        ...topic,
+        links,
+        category_ids: categoryIds,
+        category_labels: categoryLabels,
+        thread_date: options.topicThreadDates?.get(Number(topic.id)) || topic.created_at || null,
+    };
+};
+
 const ensureDir = async (filePath: string): Promise<void> => {
     const dir = path.dirname(filePath);
     await fsp.mkdir(dir, { recursive: true });
@@ -308,6 +500,7 @@ const createEmptyState = (): AppState => ({
             topic_logs: 0,
             topic_notes: 0,
             task_topics: 0,
+            topic_categories: 0,
         },
     },
     categories: [],
@@ -323,6 +516,7 @@ const createEmptyState = (): AppState => ({
     topic_logs: [],
     topic_notes: [],
     task_topics: [],
+    topic_categories: [],
 });
 
 const getStateKeys = (): (keyof AppState)[] => Object.keys(createEmptyState()) as (keyof AppState)[];
@@ -451,6 +645,8 @@ const migrateInPlace = (st: any): AppState => {
         t.priority = normalizePriority(t.priority);
         if (!t.task_type) t.task_type = 'NONE';
         t.task_type = normalizeTaskType(t.task_type);
+        t.links = normalizeExternalLinks((t as { links?: unknown }).links, t.url);
+        t.url = firstExternalLinkUrl(t.links);
         if (t.archived === undefined) t.archived = 0;
         if (t.archived && !t.archived_at) t.archived_at = nowIso();
         if (t.board_position === undefined || t.board_position === null) t.board_position = 0;
@@ -514,8 +710,27 @@ const migrateInPlace = (st: any): AppState => {
         if (!t.created_at) t.created_at = nowIso();
         if (!t.updated_at) t.updated_at = t.created_at;
         if (!t.status) t.status = 'BACKLOG';
+        t.links = normalizeExternalLinks((t as { links?: unknown }).links);
         if (t.position === undefined || t.position === null) t.position = 0;
     });
+
+    const validTopicIds = new Set(typedState.topics.map((topic) => Number(topic.id)).filter((id) => Number.isFinite(id) && id > 0));
+    const validCategoryIds = new Set(typedState.categories.map((category) => Number(category.id)).filter((id) => Number.isFinite(id) && id > 0));
+    const seenTopicCategories = new Set<string>();
+    typedState.topic_categories = typedState.topic_categories
+        .map((entry) => ({
+            id: Number(entry?.id),
+            topic_id: Number(entry?.topic_id),
+            category_id: Number(entry?.category_id),
+        }))
+        .filter((entry) => {
+            if (!Number.isFinite(entry.id) || entry.id <= 0) return false;
+            if (!validTopicIds.has(entry.topic_id) || !validCategoryIds.has(entry.category_id)) return false;
+            const key = `${entry.topic_id}:${entry.category_id}`;
+            if (seenTopicCategories.has(key)) return false;
+            seenTopicCategories.add(key);
+            return true;
+        });
 
     const nextTaskPositionByCategory = new Map<string, number>();
     typedState.tasks.forEach((task) => {
@@ -596,7 +811,14 @@ const computeTodoStats = (st: AppState): Map<number, { total: number; completed:
 
 const taskWithComputedFields = (t: Task, todoStats: Map<number, { total: number; completed: number }>): Task => {
     const stats = todoStats.get(Number(t.id)) || { total: 0, completed: 0 };
-    return { ...t, todo_total: stats.total, todo_completed: stats.completed };
+    const links = normalizeExternalLinks(t.links, t.url);
+    return {
+        ...t,
+        url: firstExternalLinkUrl(links),
+        links,
+        todo_total: stats.total,
+        todo_completed: stats.completed,
+    };
 };
 
 const sortTasksDefault = (a: Task, b: Task): number => {
@@ -769,6 +991,7 @@ export const archiveCategory = async (id: number) => {
             const cat = st.categories.find((c) => Number(c.id) === Number(categoryId));
             if (!cat) return;
             cat.archived = 1;
+            st.topic_categories = st.topic_categories.filter((entry) => Number(entry.category_id) !== Number(categoryId));
             // archive tasks and notes in this category
             st.tasks.forEach((t) => {
                 if (Number(t.category_id) !== Number(categoryId)) return;
@@ -889,22 +1112,37 @@ export const getTasksByFilters = async (filters: {
 
 export const getTask = async (id: number): Promise<Task | null> => {
     const st = getState();
-    return st.tasks.find((t) => Number(t.id) === Number(id)) || null;
+    const task = st.tasks.find((t) => Number(t.id) === Number(id));
+    if (!task) return null;
+    const links = normalizeExternalLinks(task.links, task.url);
+    return {
+        ...task,
+        url: firstExternalLinkUrl(links),
+        links,
+    };
 };
 
-export const createTask = async (category_id: number | null, title: string, description: string | null, url: string | null) => {
+export const createTask = async (
+    category_id: number | null,
+    title: string,
+    description: string | null,
+    url: string | null,
+    links?: ExternalLink[] | null
+) => {
     return withWriteLock(async () => {
         const st = getState();
         const id = bumpId('tasks');
         const nextListPosition = st.tasks
             .filter((task) => Number(task.category_id) === Number(category_id))
             .reduce((max, task) => Math.max(max, Number(task.list_position ?? 0)), -1) + 1;
+        const normalizedLinks = normalizeExternalLinks(links, url);
         st.tasks.push({
             id,
             category_id: category_id ?? null,
             title,
             description: description ?? null,
-            url: url ?? null,
+            url: firstExternalLinkUrl(normalizedLinks),
+            links: normalizedLinks,
             due_date: null,
             task_type: 'NONE',
             story_points: 0,
@@ -937,7 +1175,8 @@ export const updateTask = async (
     task_type?: string | null,
     due_date?: string | null,
     board_position?: number | null,
-    list_position?: number | null
+    list_position?: number | null,
+    links?: ExternalLink[] | null
 ) => {
     return withWriteLock(async () => {
         const st = getState();
@@ -1000,12 +1239,21 @@ export const updateTask = async (
         task.category_id = nextCategoryId;
         if (title !== undefined) task.title = title;
         if (description !== undefined) task.description = description;
-        if (url !== undefined) task.url = url;
         if (due_date !== undefined) task.due_date = parseDateOnly(due_date) || null;
         if (status !== undefined) task.status = nextStatus;
         if (story_points !== undefined) task.story_points = normalizeStoryPoints(story_points, task.story_points ?? 0);
         if (priority !== undefined) task.priority = normalizePriority(priority);
         if (task_type !== undefined) task.task_type = normalizeTaskType(task_type);
+
+        if (links !== undefined) {
+            const normalizedLinks = normalizeExternalLinks(links);
+            task.links = normalizedLinks;
+            task.url = firstExternalLinkUrl(normalizedLinks);
+        } else if (url !== undefined) {
+            const normalizedLinks = normalizeExternalLinks(undefined, url);
+            task.links = normalizedLinks;
+            task.url = firstExternalLinkUrl(normalizedLinks);
+        }
         
         task.board_position = nextBoardPosition;
         task.list_position = nextListPosition;
@@ -1520,6 +1768,12 @@ export const search = async (query: string, limit = 60): Promise<any[]> => {
 
     const results: any[] = [];
     const topicSearchData = new Map<number, { textParts: string[]; latestUpdatedAt: string | null }>();
+    const topicCategoryIds = buildTopicCategoryIndex(st);
+    const searchableCategoryById = new Map<number, Category>(
+        st.categories
+            .filter((category) => !category.archived)
+            .map((category) => [Number(category.id), category])
+    );
 
     st.topic_notes.forEach((note) => {
         const topicId = Number(note.topic_id);
@@ -1538,7 +1792,8 @@ export const search = async (query: string, limit = 60): Promise<any[]> => {
     st.tasks.forEach((task) => {
         if (!task || task.archived) return;
         const title = String(task.title || '').trim();
-        const body = `${task.description || ''} ${task.url || ''}`.trim();
+        const links = normalizeExternalLinks(task.links, task.url);
+        const body = `${task.description || ''} ${task.url || ''} ${externalLinksToSearchText(links)}`.trim();
         if (!matches(title, body)) return;
         const snippetSource = task.description ? String(task.description) : `${title} ${body}`.trim();
         results.push({
@@ -1593,9 +1848,13 @@ export const search = async (query: string, limit = 60): Promise<any[]> => {
         if (!topic || topic.archived) return;
         const title = String(topic.title || '').trim() || 'Untitled thread';
         const related = topicSearchData.get(Number(topic.id));
-        const body = `${topic.description || ''} ${topic.tags || ''} ${(related?.textParts || []).join(' ')}`.trim();
+        const links = normalizeExternalLinks(topic.links);
+        const categoryLabels = (topicCategoryIds.get(Number(topic.id)) || [])
+            .map((categoryId) => getCategoryPathLabel(searchableCategoryById, categoryId))
+            .filter(Boolean);
+        const body = `${topic.description || ''} ${topic.tags || ''} ${externalLinksToSearchText(links)} ${categoryLabels.join(' ')} ${(related?.textParts || []).join(' ')}`.trim();
         if (!matches(title, body)) return;
-        const snippetSource = (related?.textParts || []).join(' ') || topic.description || topic.tags || title;
+        const snippetSource = (related?.textParts || []).join(' ') || topic.description || categoryLabels.join(' ') || topic.tags || title;
         results.push({
             type: 'thread',
             id: Number(topic.id),
@@ -1722,6 +1981,13 @@ export const getTopics = async (filters: {
     const st = getState();
     const archivedMode = normalizeArchivedMode(filters.archived);
     const statuses = normalizeStatuses(filters.statuses);
+    const topicCategoryIds = buildTopicCategoryIndex(st);
+    const topicThreadDates = buildTopicThreadDateIndex(st);
+    const categoryById = new Map<number, Category>(
+        st.categories
+            .filter((category) => !category.archived)
+            .map((category) => [Number(category.id), category])
+    );
     return st.topics
         .filter((topic) => {
             if (archivedMode === 'exclude' && topic.archived) return false;
@@ -1736,23 +2002,37 @@ export const getTopics = async (filters: {
             if (ap !== bp) return ap - bp;
             return String(b.updated_at || '').localeCompare(String(a.updated_at || ''));
         })
-        .map((topic) => ({ ...topic }));
+        .map((topic) => decorateTopic(st, topic, { topicCategoryIds, topicThreadDates, categoryById }));
 };
 export const getTopic = async (id: number): Promise<Topic | null> => {
     const st = getState();
-    return st.topics.find((t) => Number(t.id) === Number(id)) || null;
+    const topic = st.topics.find((t) => Number(t.id) === Number(id));
+    if (!topic) return null;
+    return decorateTopic(st, topic, {
+        topicCategoryIds: buildTopicCategoryIndex(st),
+        topicThreadDates: buildTopicThreadDateIndex(st),
+    });
 };
-export const createTopic = async (title: string, description: string | null, status: string | null, tags: string | null) => {
+export const createTopic = async (
+    title: string,
+    description: string | null,
+    status: string | null,
+    tags: string | null,
+    links?: ExternalLink[] | null,
+    category_ids?: (number | string)[] | null
+) => {
     return withWriteLock(async () => {
         const st = getState();
         const id = bumpId('topics');
         const nextPosition = st.topics.reduce((max, topic) => Math.max(max, Number(topic.position ?? 0)), -1) + 1;
+        const normalizedLinks = normalizeExternalLinks(links);
         const topic: Topic = {
             id,
             title,
             description: description || '',
             status: status || 'BACKLOG',
             tags: tags || '',
+            links: normalizedLinks,
             position: nextPosition,
             archived: 0,
             archived_at: null,
@@ -1760,11 +2040,20 @@ export const createTopic = async (title: string, description: string | null, sta
             updated_at: nowIso(),
         };
         st.topics.push(topic);
+        replaceTopicCategoryLinks(st, id, parseNumericIdList(category_ids));
         await persist();
         return { changes: 1, lastInsertRowid: id };
     });
 };
-export const updateTopic = async (id: number, title?: string, description?: string | null, status?: string | null, tags?: string | null) => {
+export const updateTopic = async (
+    id: number,
+    title?: string,
+    description?: string | null,
+    status?: string | null,
+    tags?: string | null,
+    links?: ExternalLink[] | null,
+    category_ids?: (number | string)[] | null
+) => {
     return withWriteLock(async () => {
         const st = getState();
         const topic = st.topics.find((t) => Number(t.id) === Number(id));
@@ -1773,6 +2062,8 @@ export const updateTopic = async (id: number, title?: string, description?: stri
         if (description !== undefined) topic.description = description || '';
         if (status !== undefined) topic.status = status || 'BACKLOG';
         if (tags !== undefined) topic.tags = tags || '';
+        if (links !== undefined) topic.links = normalizeExternalLinks(links);
+        if (category_ids !== undefined) replaceTopicCategoryLinks(st, Number(id), parseNumericIdList(category_ids));
         topic.updated_at = nowIso();
         await persist();
         return { changes: 1 };
@@ -1815,6 +2106,7 @@ export const deleteTopic = async (id: number) => {
         st.topic_logs = st.topic_logs.filter((tl) => Number(tl.topic_id) !== tid);
         st.topic_notes = st.topic_notes.filter((tn) => Number(tn.topic_id) !== tid);
         st.task_topics = st.task_topics.filter((tt) => Number(tt.topic_id) !== tid);
+        st.topic_categories = st.topic_categories.filter((tc) => Number(tc.topic_id) !== tid);
         await persist();
         return { changes: 1 };
     });
@@ -2000,7 +2292,16 @@ export const getTaskTopics = async (taskId: number): Promise<Topic[]> => {
         .filter((tt) => Number(tt.task_id) === tid)
         .map((tt) => Number(tt.topic_id));
     const topicSet = new Set(topicIds);
-    return st.topics.filter((t) => topicSet.has(Number(t.id)));
+    const topicCategoryIds = buildTopicCategoryIndex(st);
+    const topicThreadDates = buildTopicThreadDateIndex(st);
+    const categoryById = new Map<number, Category>(
+        st.categories
+            .filter((category) => !category.archived)
+            .map((category) => [Number(category.id), category])
+    );
+    return st.topics
+        .filter((t) => topicSet.has(Number(t.id)))
+        .map((topic) => decorateTopic(st, topic, { topicCategoryIds, topicThreadDates, categoryById }));
 };
 export const setTaskTopics = async (taskId: number, topicIds: (number | string)[]) => {
     return withWriteLock(async () => {
