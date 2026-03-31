@@ -33,7 +33,7 @@ const ExternalLinksEditor: React.FC<ExternalLinksEditorProps> = ({ links = [], o
             {drafts.length > 0 ? (
                 <div className="external-links-list">
                     {drafts.map((link, index) => (
-                        <div key={`${index}-${link.url}-${link.label}`} className="external-link-row">
+                        <div key={index} className="external-link-row">
                             <div className="external-link-grid">
                                 <input
                                     type="text"
