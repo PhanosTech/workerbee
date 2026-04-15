@@ -795,6 +795,21 @@ export const init = async (): Promise<void> => {
     return initPromise;
 };
 
+export const reload = async (): Promise<void> => {
+    if (initPromise) {
+        try {
+            await initPromise;
+        } catch {
+            // Ignore the previous init failure and try again with the current DB_PATH.
+        }
+    }
+
+    await withWriteLock(async () => undefined);
+    state = null;
+    initPromise = null;
+    await init();
+};
+
 const computeTodoStats = (st: AppState): Map<number, { total: number; completed: number }> => {
     const byTaskId = new Map<number, { total: number; completed: number }>();
     st.todos.forEach((td) => {

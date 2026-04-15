@@ -2178,6 +2178,115 @@ select:focus-visible {
     flex-direction: column;
 }
 
+.settings-layout {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.settings-card {
+    background: linear-gradient(180deg, var(--panel-bg), var(--panel-bg-2));
+    border: 1px solid var(--border-subtle);
+    border-radius: 16px;
+    padding: 18px;
+}
+
+.settings-card h3 {
+    margin: 0 0 12px;
+}
+
+.settings-path {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    font-size: 0.92rem;
+    line-height: 1.5;
+    word-break: break-word;
+    background: var(--panel-bg-3);
+    border: 1px solid var(--border-subtle);
+    border-radius: 12px;
+    padding: 12px 14px;
+}
+
+.settings-field {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 14px;
+}
+
+.settings-field > span {
+    font-size: 0.82rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    opacity: 0.72;
+}
+
+.settings-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.settings-status {
+    border-radius: 14px;
+    padding: 12px 14px;
+    border: 1px solid var(--border-subtle);
+    background: var(--panel-bg);
+}
+
+.settings-status.success {
+    border-color: rgba(92, 184, 92, 0.45);
+}
+
+.settings-status.error {
+    border-color: rgba(217, 83, 79, 0.5);
+}
+
+.settings-status.info {
+    border-color: rgba(91, 192, 222, 0.45);
+}
+
+.settings-meta-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+}
+
+.settings-meta-item {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    background: var(--panel-bg-3);
+    border-radius: 12px;
+    padding: 12px;
+}
+
+.settings-meta-item span {
+    font-size: 0.76rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    opacity: 0.7;
+}
+
+.settings-meta-item strong {
+    line-height: 1.45;
+    word-break: break-word;
+}
+
+.settings-inspection {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border-subtle);
+}
+
+.settings-files {
+    margin-top: 12px;
+    line-height: 1.5;
+    opacity: 0.82;
+    word-break: break-word;
+}
+
 @media (max-width: 1100px) {
     .kanban-board {
         grid-template-columns: 1fr;
@@ -2217,5 +2326,9 @@ select:focus-visible {
     .topbar-nav,
     .topbar-right {
         justify-self: flex-start;
+    }
+
+    .settings-actions {
+        align-items: stretch;
     }
 }

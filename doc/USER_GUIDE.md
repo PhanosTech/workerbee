@@ -9,11 +9,16 @@ Then open your browser to `http://localhost:9229`.
 
 ## Usage Concepts
 
-The application is divided into three main views, accessible from the top navigation bar:
+The top navigation bar gives you access to the main parts of the app:
 
-1.  **Kanban**: Where you work.
-2.  **Backlog**: Where you plan.
-3.  **Reports**: Where you review.
+1.  **Logs**: Your day-by-day journal/work log area.
+2.  **Threads**: Follow-up threads with their own notes, worklog, linked tasks, links, and backlog folders.
+3.  **Kanban**: Where you work.
+4.  **Backlog**: Where you plan.
+5.  **Notes**: Browse and edit notes attached to tasks and folders.
+6.  **Reports**: Where you review.
+7.  **Weekly**: Weekly status notes.
+8.  **Settings**: App configuration, including the data directory.
 
 ---
 
@@ -53,6 +58,32 @@ Clicking any task opens a modal with powerful tools:
 *   **Todos**: Add quick checklists (e.g., "Email Bob", "Fix bug").
 *   **Logs**: Add timestamped updates (e.g., "Found the issue in server.js", "Waiting for reply"). This is crucial for tracking *what* you did and *when*.
 *   **Notes**: Write long-form content with rich text formatting (bold, lists, code blocks).
+*   **Links**: Add labeled external links such as tickets, docs, PRs, or reference pages.
+*   **Threads**: See and open linked threads directly from the task.
+
+---
+
+### Threads
+
+Threads are useful for follow-ups, email chains, or ongoing discussions that need their own notes and worklog without becoming a task themselves.
+
+*   **Details**: Give the thread a title, description, status, links, and one or more backlog folders.
+*   **Notes**: Keep separate notes for individual messages, summaries, or imported thread items.
+*   **Tasks**: Link related tasks so thread context and execution stay connected.
+*   **Logs**: Track progress or key updates over time.
+
+---
+
+### Settings
+
+The Settings page lets you control where WorkerBee stores its JSON data files.
+
+*   **Current Data Directory**: Shows the folder the desktop app is using right now.
+*   **Check Folder**: Verifies the selected folder path before switching.
+*   **Save & Switch**:
+    *   If the folder already contains WorkerBee data, the app loads it immediately.
+    *   If the folder is empty or missing, WorkerBee creates it and starts a fresh store there.
+*   **Persistence**: The selected data directory is saved and used again after the app restarts.
 
 ---
 
@@ -64,7 +95,7 @@ The Reports page helps you see what you've accomplished.
 
 ## Themes
 
-Workbee comes with several built-in themes to match your mood. Click the "Palette" icon in the top right to switch between:
+Workbee comes with several built-in themes to match your mood. Use the theme selector in the top right to switch between:
 *   Midnight (Default Dark)
 *   Graphite
 *   Ocean

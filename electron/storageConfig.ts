@@ -5,6 +5,23 @@ const WINDOWS_CONFIG_DIR_NAME = 'workerbee';
 const WINDOWS_LEGACY_CONFIG_DIR_NAME = 'WorkerBee';
 const CONFIG_FILE_NAME = 'config.json';
 const DATA_DIR_NAME = 'workbee_data';
+const PERSISTED_STATE_FILE_NAMES = [
+    'meta.json',
+    'categories.json',
+    'tasks.json',
+    'todos.json',
+    'logs.json',
+    'notes.json',
+    'label_notes.json',
+    'weekly_notes.json',
+    'journal_entries.json',
+    'topics.json',
+    'topic_todos.json',
+    'topic_logs.json',
+    'topic_notes.json',
+    'task_topics.json',
+    'topic_categories.json',
+] as const;
 
 export type DataDirSource = 'env' | 'config' | 'default' | 'legacy-local' | 'legacy-roaming' | 'legacy-exe';
 
@@ -22,6 +39,14 @@ export interface ResolvedStorageConfig {
     legacyExeDataDir: string;
 }
 
+export interface DataDirectoryInspection {
+    normalizedPath: string;
+    exists: boolean;
+    createdDirectory: boolean;
+    hasPersistedState: boolean;
+    detectedFiles: string[];
+}
+
 interface ResolveStorageConfigOptions {
     appDataDir?: string;
     homeDir?: string;
@@ -36,6 +61,9 @@ const normalizeFsPath = (value: string | null | undefined, baseDir: string): str
     if (!raw) return null;
     return path.normalize(path.isAbsolute(raw) ? raw : path.resolve(baseDir, raw));
 };
+
+export const resolvePathValue = (value: string | null | undefined, baseDir: string): string | null =>
+    normalizeFsPath(value, baseDir);
 
 const uniquePaths = (paths: string[]): string[] => {
     const seen = new Set<string>();
@@ -59,6 +87,52 @@ const readConfigFile = (filePath: string): WorkerBeeDesktopConfig | null => {
         const message = err instanceof Error ? err.message : String(err);
         throw new Error(`Failed to read WorkerBee config at ${filePath}: ${message}`);
     }
+};
+
+export const readDesktopConfig = (filePath: string): WorkerBeeDesktopConfig | null =>
+    readConfigFile(filePath);
+
+export const writeDesktopConfig = (configPath: string, config: WorkerBeeDesktopConfig): void => {
+    fs.mkdirSync(path.dirname(configPath), { recursive: true });
+    fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, 'utf8');
+};
+
+export const inspectDataDirectory = (value: string, baseDir = process.cwd()): DataDirectoryInspection => {
+    const normalizedPath = resolvePathValue(value, baseDir);
+    if (!normalizedPath) {
+        throw new Error('Data directory is required.');
+    }
+
+    const exists = fs.existsSync(normalizedPath);
+    if (exists) {
+        const stat = fs.statSync(normalizedPath);
+        if (!stat.isDirectory()) {
+            throw new Error(`Path is not a directory: ${normalizedPath}`);
+        }
+    }
+
+    const detectedFiles = PERSISTED_STATE_FILE_NAMES
+        .filter((fileName) => fs.existsSync(path.join(normalizedPath, fileName)));
+
+    return {
+        normalizedPath,
+        exists,
+        createdDirectory: false,
+        hasPersistedState: detectedFiles.length > 0,
+        detectedFiles,
+    };
+};
+
+export const ensureDataDirectory = (value: string, baseDir = process.cwd()): DataDirectoryInspection => {
+    const inspection = inspectDataDirectory(value, baseDir);
+    if (inspection.exists) return inspection;
+
+    fs.mkdirSync(inspection.normalizedPath, { recursive: true });
+    return {
+        ...inspection,
+        exists: true,
+        createdDirectory: true,
+    };
 };
 
 const getWindowsConfigDir = (appDataDir: string): string =>
@@ -183,7 +257,6 @@ export const resolveStorageConfig = ({
 
 export const ensureConfigFile = (configPath: string, config: WorkerBeeDesktopConfig): boolean => {
     if (fs.existsSync(configPath)) return false;
-    fs.mkdirSync(path.dirname(configPath), { recursive: true });
-    fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, 'utf8');
+    writeDesktopConfig(configPath, config);
     return true;
 };

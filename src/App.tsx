@@ -8,6 +8,7 @@ import TopicsPage from './pages/TopicsPage';
 import NotesPage from './pages/NotesPage';
 import WeeklyStatusPage from './pages/WeeklyStatusPage';
 import JournalPage from './pages/JournalPage';
+import SettingsPage from './pages/SettingsPage';
 import SearchModal from './components/SearchModal';
 import './styles/main.css';
 
@@ -89,6 +90,14 @@ function App() {
 
     const openSearch = () => setSearchOpen(true);
 
+    const handleDataDirectoryChanged = () => {
+        setSearchOpen(false);
+        setBacklogFocus(null);
+        setNotesFocus(null);
+        setWeeklyFocus(null);
+        setThreadFocus(null);
+    };
+
     const handleSearchSelect = (result: SearchResult) => {
         if (!result) return;
         if (result.type === 'task') {
@@ -122,6 +131,7 @@ function App() {
                 {activeTab === 'backlog' && <BacklogPage focus={backlogFocus} onOpenSearch={openSearch} />}
                 {activeTab === 'reports' && <ReportsPage />}
                 {activeTab === 'journal' && <JournalPage />}
+                {activeTab === 'settings' && <SettingsPage onDataDirectoryChanged={handleDataDirectoryChanged} />}
             </main>
 
             <SearchModal open={searchOpen} onClose={() => setSearchOpen(false)} onSelect={handleSearchSelect} />

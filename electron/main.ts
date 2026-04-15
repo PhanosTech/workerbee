@@ -1,9 +1,20 @@
-import { app, BrowserWindow, ipcMain, IpcMainInvokeEvent } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, IpcMainInvokeEvent } from 'electron';
+import * as fs from 'fs';
 import * as path from 'path';
 import * as db from '../database';
-import { ensureConfigFile, resolveStorageConfig } from './storageConfig';
+import {
+    DataDirSource,
+    DataDirectoryInspection,
+    ResolvedStorageConfig,
+    ensureConfigFile,
+    ensureDataDirectory,
+    inspectDataDirectory,
+    readDesktopConfig,
+    resolvePathValue,
+    resolveStorageConfig,
+    writeDesktopConfig,
+} from './storageConfig';
 
-// Ensure Windows uses the correct AppUserModelID
 if (process.platform === 'win32') {
     try {
         app.setAppUserModelId('com.workbee.app');
@@ -12,32 +23,59 @@ if (process.platform === 'win32') {
     }
 }
 
-// Environment Setup
 const isDev = !app.isPackaged;
+const DEV_CONFIG_FILE_NAME = 'workbee.dev.config.json';
+
+type StorageInspectionResponse = {
+    normalizedPath: string;
+    exists: boolean;
+    willCreateDirectory: boolean;
+    hasExistingData: boolean;
+    dataFiles: string[];
+};
+
+type StorageSettingsResponse = {
+    dataDir: string;
+    dataDirSource: DataDirSource;
+    defaultDataDir: string;
+    configPath: string | null;
+    preferredConfigPath: string;
+    hasExistingData: boolean;
+    dataFiles: string[];
+    envOverrideActive: boolean;
+    isDev: boolean;
+};
+
+type SetDataDirectoryResponse = StorageSettingsResponse & {
+    changed: boolean;
+    createdDirectory: boolean;
+    loadedExistingData: boolean;
+    startedFresh: boolean;
+};
 
 let mainWindow: BrowserWindow | null = null;
+let currentStorage: ResolvedStorageConfig | null = null;
 
 function createWindow() {
     const windowIcon = path.join(__dirname, '..', process.platform === 'win32' ? 'favicon.ico' : 'logo.png');
     mainWindow = new BrowserWindow({
         width: 1280,
         height: 800,
-        title: "WorkerBee",
+        title: 'WorkerBee',
         icon: windowIcon,
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
-            preload: path.join(__dirname, 'preload.js')
+            preload: path.join(__dirname, 'preload.js'),
         },
-        autoHideMenuBar: true
+        autoHideMenuBar: true,
     });
 
     if (isDev) {
-        mainWindow.loadURL(`http://localhost:9229`);
+        mainWindow.loadURL('http://localhost:9229');
         mainWindow.webContents.openDevTools();
     } else {
         mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
-        // Allow opening dev tools in production for debugging blank screens
         mainWindow.webContents.on('before-input-event', (event, input) => {
             if (input.control && input.shift && input.key.toLowerCase() === 'i') {
                 mainWindow?.webContents.openDevTools();
@@ -47,8 +85,210 @@ function createWindow() {
     }
 }
 
-// IPC Handlers
+const getRuntimeDirs = () => {
+    const homeDir = app.getPath('home');
+    return {
+        homeDir,
+        localAppDataDir: process.env.LOCALAPPDATA || path.join(homeDir, 'AppData', 'Local'),
+        roamingAppDataDir: process.env.APPDATA || path.join(homeDir, 'AppData', 'Roaming'),
+    };
+};
+
+const buildLegacyDbPaths = (dataDir: string): string[] => {
+    const { homeDir, localAppDataDir, roamingAppDataDir } = getRuntimeDirs();
+    return Array.from(
+        new Set([
+            path.join(path.dirname(dataDir), 'workbee.json'),
+            path.join(homeDir, 'workerbee', 'workbee.json'),
+            path.join(localAppDataDir, 'workerbee', 'workbee.json'),
+            path.join(roamingAppDataDir, 'WorkerBee', 'workbee.json'),
+            path.join(path.dirname(process.execPath), 'workbee.json'),
+        ].map((entry) => path.normalize(entry)))
+    );
+};
+
+const applyStorageEnvironment = (storage: ResolvedStorageConfig) => {
+    process.env.DB_PATH = storage.dataDir;
+    process.env.WORKERBEE_LEGACY_DB_PATHS = buildLegacyDbPaths(storage.dataDir).join(path.delimiter);
+};
+
+const resolveDevStorageConfig = (): ResolvedStorageConfig => {
+    const repoRoot = path.resolve(__dirname, '..');
+    const preferredConfigPath = path.join(repoRoot, DEV_CONFIG_FILE_NAME);
+    const loadedConfig = readDesktopConfig(preferredConfigPath);
+    const configPath = loadedConfig ? preferredConfigPath : null;
+    const envDataDir = resolvePathValue(process.env.WORKERBEE_DATA_DIR, process.cwd());
+    const configuredDataDir = loadedConfig
+        ? resolvePathValue(loadedConfig.dataDir, path.dirname(preferredConfigPath))
+        : null;
+    const defaultDataDir = path.join(repoRoot, 'workbee_data');
+
+    if (envDataDir) {
+        return {
+            configPath,
+            preferredConfigPath,
+            searchedConfigPaths: [preferredConfigPath],
+            dataDir: envDataDir,
+            dataDirSource: 'env',
+            defaultDataDir,
+            legacyExeDataDir: defaultDataDir,
+        };
+    }
+
+    if (configuredDataDir) {
+        return {
+            configPath: preferredConfigPath,
+            preferredConfigPath,
+            searchedConfigPaths: [preferredConfigPath],
+            dataDir: configuredDataDir,
+            dataDirSource: 'config',
+            defaultDataDir,
+            legacyExeDataDir: defaultDataDir,
+        };
+    }
+
+    return {
+        configPath,
+        preferredConfigPath,
+        searchedConfigPaths: [preferredConfigPath],
+        dataDir: defaultDataDir,
+        dataDirSource: 'default',
+        defaultDataDir,
+        legacyExeDataDir: defaultDataDir,
+    };
+};
+
+const resolveCurrentStorage = (): ResolvedStorageConfig => {
+    if (isDev) return resolveDevStorageConfig();
+
+    const { homeDir, localAppDataDir, roamingAppDataDir } = getRuntimeDirs();
+    return resolveStorageConfig({
+        homeDir,
+        appDataDir: roamingAppDataDir,
+        localAppDataDir,
+        exePath: process.execPath,
+    });
+};
+
+const refreshCurrentStorage = (): ResolvedStorageConfig => {
+    const resolved = resolveCurrentStorage();
+    currentStorage = resolved;
+    applyStorageEnvironment(resolved);
+    return resolved;
+};
+
+const getStorageConfigBaseDir = (): string => {
+    const configPath = currentStorage?.configPath || currentStorage?.preferredConfigPath;
+    return configPath ? path.dirname(configPath) : process.cwd();
+};
+
+const toInspectionResponse = (inspection: DataDirectoryInspection): StorageInspectionResponse => ({
+    normalizedPath: inspection.normalizedPath,
+    exists: inspection.exists,
+    willCreateDirectory: !inspection.exists,
+    hasExistingData: inspection.hasPersistedState,
+    dataFiles: inspection.detectedFiles,
+});
+
+const toStorageSettingsResponse = (storage: ResolvedStorageConfig): StorageSettingsResponse => {
+    const inspection = inspectDataDirectory(storage.dataDir);
+    return {
+        dataDir: storage.dataDir,
+        dataDirSource: storage.dataDirSource,
+        defaultDataDir: storage.defaultDataDir,
+        configPath: storage.configPath,
+        preferredConfigPath: storage.preferredConfigPath,
+        hasExistingData: inspection.hasPersistedState,
+        dataFiles: inspection.detectedFiles,
+        envOverrideActive: storage.dataDirSource === 'env',
+        isDev,
+    };
+};
+
+const logStorageConfig = (storage: ResolvedStorageConfig) => {
+    console.log(
+        [
+            `[workbee] Data dir: ${storage.dataDir}`,
+            `[workbee] Data dir source: ${storage.dataDirSource}`,
+            storage.configPath
+                ? `[workbee] Config: ${storage.configPath}`
+                : `[workbee] Config search paths: ${storage.searchedConfigPaths.join(', ')}`,
+        ].join('\n')
+    );
+};
+
+const getStorageSettings = (): StorageSettingsResponse => {
+    if (!currentStorage) throw new Error('Storage has not been initialized yet.');
+    return toStorageSettingsResponse(currentStorage);
+};
+
+const switchDataDirectory = async (rawDataDir: string): Promise<SetDataDirectoryResponse> => {
+    if (!currentStorage) throw new Error('Storage has not been initialized yet.');
+    if (currentStorage.dataDirSource === 'env') {
+        throw new Error('WORKERBEE_DATA_DIR is active. Remove the environment override to change the data directory from Settings.');
+    }
+
+    const previousStorage = currentStorage;
+    const preparedDirectory = ensureDataDirectory(rawDataDir, getStorageConfigBaseDir());
+    const normalizedPath = preparedDirectory.normalizedPath;
+    const samePath = path.normalize(previousStorage.dataDir) === path.normalize(normalizedPath);
+    const targetConfigPath = previousStorage.configPath || previousStorage.preferredConfigPath;
+    const hadExistingConfig = fs.existsSync(targetConfigPath);
+    const previousConfig = readDesktopConfig(targetConfigPath) || {};
+
+    writeDesktopConfig(targetConfigPath, {
+        ...previousConfig,
+        dataDir: normalizedPath,
+    });
+
+    try {
+        const nextStorage = refreshCurrentStorage();
+        if (!samePath) {
+            await db.reload();
+        }
+        logStorageConfig(nextStorage);
+        return {
+            ...toStorageSettingsResponse(nextStorage),
+            changed: !samePath,
+            createdDirectory: preparedDirectory.createdDirectory,
+            loadedExistingData: preparedDirectory.hasPersistedState,
+            startedFresh: !preparedDirectory.hasPersistedState,
+        };
+    } catch (err) {
+        if (hadExistingConfig) {
+            writeDesktopConfig(targetConfigPath, previousConfig);
+        } else if (fs.existsSync(targetConfigPath)) {
+            fs.rmSync(targetConfigPath, { force: true });
+        }
+        currentStorage = previousStorage;
+        applyStorageEnvironment(previousStorage);
+        if (!samePath) {
+            await db.reload();
+        }
+        throw err;
+    }
+};
+
 function setupIpcHandlers() {
+    ipcMain.handle('getStorageSettings', () => getStorageSettings());
+    ipcMain.handle('selectDataDirectory', async () => {
+        const dialogOptions = {
+            defaultPath: currentStorage?.dataDir,
+            properties: ['openDirectory', 'createDirectory'] as Array<'openDirectory' | 'createDirectory'>,
+        };
+        const result = mainWindow
+            ? await dialog.showOpenDialog(mainWindow, dialogOptions)
+            : await dialog.showOpenDialog(dialogOptions);
+        if (result.canceled || !result.filePaths[0]) return null;
+        return result.filePaths[0];
+    });
+    ipcMain.handle('inspectDataDirectory', (_e: IpcMainInvokeEvent, rawDataDir: string) =>
+        toInspectionResponse(inspectDataDirectory(rawDataDir, getStorageConfigBaseDir()))
+    );
+    ipcMain.handle('setDataDirectory', (_e: IpcMainInvokeEvent, { dataDir }: { dataDir: string }) =>
+        switchDataDirectory(dataDir)
+    );
+
     // Categories
     ipcMain.handle('getCategories', () => db.getCategories());
     ipcMain.handle('createCategory', (_e: IpcMainInvokeEvent, { parent_id, name, color }: { parent_id: number | null, name: string, color: string | null }) => db.createCategory(parent_id, name, color));
@@ -75,7 +315,7 @@ function setupIpcHandlers() {
         const [todos, logs, notes] = await Promise.all([
             db.getTaskTodos(id),
             db.getTaskLogs(id),
-            db.getTaskNotes(id)
+            db.getTaskNotes(id),
         ]);
         return { ...task, todos, logs, notes };
     });
@@ -190,48 +430,17 @@ function setupIpcHandlers() {
 
 app.whenReady().then(async () => {
     try {
-        if (isDev) {
-            process.env.DB_PATH = path.join(__dirname, '../workbee_data');
-        } else {
-            const homeDir = app.getPath('home');
-            const localAppDataDir = process.env.LOCALAPPDATA || path.join(homeDir, 'AppData', 'Local');
-            const roamingAppDataDir = process.env.APPDATA || path.join(homeDir, 'AppData', 'Roaming');
-            const storage = resolveStorageConfig({
-                homeDir,
-                appDataDir: roamingAppDataDir,
-                localAppDataDir,
-                exePath: process.execPath,
-            });
-            process.env.DB_PATH = storage.dataDir;
-            process.env.WORKERBEE_LEGACY_DB_PATHS = Array.from(
-                new Set([
-                    path.join(path.dirname(storage.dataDir), 'workbee.json'),
-                    path.join(homeDir, 'workerbee', 'workbee.json'),
-                    path.join(localAppDataDir, 'workerbee', 'workbee.json'),
-                    path.join(roamingAppDataDir, 'WorkerBee', 'workbee.json'),
-                    path.join(path.dirname(process.execPath), 'workbee.json'),
-                ].map((entry) => path.normalize(entry)))
-            ).join(path.delimiter);
+        const storage = refreshCurrentStorage();
 
-            if (process.platform === 'win32' && !storage.configPath && storage.dataDirSource === 'default') {
-                try {
-                    ensureConfigFile(storage.preferredConfigPath, { dataDir: storage.dataDir });
-                } catch (err) {
-                    console.warn('[workbee] Failed to create default config file:', err);
-                }
+        if (!isDev && process.platform === 'win32' && !storage.configPath && storage.dataDirSource === 'default') {
+            try {
+                ensureConfigFile(storage.preferredConfigPath, { dataDir: storage.dataDir });
+            } catch (err) {
+                console.warn('[workbee] Failed to create default config file:', err);
             }
-
-            console.log(
-                [
-                    `[workbee] Data dir: ${storage.dataDir}`,
-                    `[workbee] Data dir source: ${storage.dataDirSource}`,
-                    storage.configPath
-                        ? `[workbee] Config: ${storage.configPath}`
-                        : `[workbee] Config search paths: ${storage.searchedConfigPaths.join(', ')}`,
-                ].join('\n')
-            );
         }
 
+        logStorageConfig(storage);
         await db.init();
         setupIpcHandlers();
         createWindow();

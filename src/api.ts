@@ -189,6 +189,35 @@ export interface ChangesResponse {
     lastInsertRowid?: number;
 }
 
+export type DataDirSource = 'env' | 'config' | 'default' | 'legacy-local' | 'legacy-roaming' | 'legacy-exe';
+
+export interface DataDirectoryInspection {
+    normalizedPath: string;
+    exists: boolean;
+    willCreateDirectory: boolean;
+    hasExistingData: boolean;
+    dataFiles: string[];
+}
+
+export interface StorageSettings {
+    dataDir: string;
+    dataDirSource: DataDirSource;
+    defaultDataDir: string;
+    configPath: string | null;
+    preferredConfigPath: string;
+    hasExistingData: boolean;
+    dataFiles: string[];
+    envOverrideActive: boolean;
+    isDev: boolean;
+}
+
+export interface SetDataDirectoryResult extends StorageSettings {
+    changed: boolean;
+    createdDirectory: boolean;
+    loadedExistingData: boolean;
+    startedFresh: boolean;
+}
+
 export interface TaskFilters {
     status?: string;
     statuses?: string[];
@@ -217,6 +246,12 @@ const invoke = async <T>(channel: string, data?: any): Promise<T> => {
 };
 
 export const api = {
+    // Storage settings
+    getStorageSettings: (): Promise<StorageSettings> => invoke('getStorageSettings'),
+    selectDataDirectory: (): Promise<string | null> => invoke('selectDataDirectory'),
+    inspectDataDirectory: (dataDir: string): Promise<DataDirectoryInspection> => invoke('inspectDataDirectory', dataDir),
+    setDataDirectory: (dataDir: string): Promise<SetDataDirectoryResult> => invoke('setDataDirectory', { dataDir }),
+
     // Categories
     getCategories: (): Promise<Category[]> => invoke('getCategories'),
     createCategory: (parent_id: number | null, name: string, color: string | null): Promise<ChangesResponse> => 

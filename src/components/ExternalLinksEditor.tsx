@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import type { ExternalLink } from '../api';
 import { MAX_EXTERNAL_LINKS, getExternalLinkLabel, openExternalUrl } from '../utils/linkUtils';
 
@@ -7,25 +7,68 @@ interface ExternalLinksEditorProps {
     onChange: (links: ExternalLink[]) => void;
 }
 
+interface ExternalLinkDraft extends ExternalLink {
+    rowId: number;
+}
+
+const toLinkList = (links?: ExternalLink[]): ExternalLink[] =>
+    (Array.isArray(links) ? links : [])
+        .slice(0, MAX_EXTERNAL_LINKS)
+        .map((link) => ({
+            label: String(link?.label || ''),
+            url: String(link?.url || ''),
+        }));
+
+const getLinksSignature = (links?: ExternalLink[]): string =>
+    JSON.stringify(toLinkList(links));
+
 const ExternalLinksEditor: React.FC<ExternalLinksEditorProps> = ({ links = [], onChange }) => {
-    const drafts = Array.isArray(links) ? links.slice(0, MAX_EXTERNAL_LINKS) : [];
+    const nextRowIdRef = useRef(1);
+    const lastSyncedSignatureRef = useRef(getLinksSignature(links));
+
+    const buildDrafts = (nextLinks: ExternalLink[], previousDrafts: ExternalLinkDraft[] = []): ExternalLinkDraft[] =>
+        nextLinks.map((link, index) => ({
+            rowId: previousDrafts[index]?.rowId ?? nextRowIdRef.current++,
+            label: String(link.label || ''),
+            url: String(link.url || ''),
+        }));
+
+    const [drafts, setDrafts] = useState<ExternalLinkDraft[]>(() => buildDrafts(toLinkList(links)));
+
+    useEffect(() => {
+        const nextSignature = getLinksSignature(links);
+        if (nextSignature === lastSyncedSignatureRef.current) return;
+        setDrafts((previousDrafts) => buildDrafts(toLinkList(links), previousDrafts));
+        lastSyncedSignatureRef.current = nextSignature;
+    }, [links]);
+
+    const syncDrafts = (nextDrafts: ExternalLinkDraft[]) => {
+        const nextLinks = nextDrafts.map(({ label, url }) => ({ label, url }));
+        lastSyncedSignatureRef.current = getLinksSignature(nextLinks);
+        setDrafts(nextDrafts);
+        onChange(nextLinks);
+    };
 
     const handleChange = (index: number, field: keyof ExternalLink, value: string) => {
         const next = drafts.slice();
         next[index] = {
+            rowId: next[index]?.rowId ?? nextRowIdRef.current++,
             label: field === 'label' ? value : String(next[index]?.label || ''),
             url: field === 'url' ? value : String(next[index]?.url || ''),
         };
-        onChange(next);
+        syncDrafts(next);
     };
 
     const handleAdd = () => {
         if (drafts.length >= MAX_EXTERNAL_LINKS) return;
-        onChange([...drafts, { label: '', url: '' }]);
+        syncDrafts([
+            ...drafts,
+            { rowId: nextRowIdRef.current++, label: '', url: '' },
+        ]);
     };
 
     const handleRemove = (index: number) => {
-        onChange(drafts.filter((_, draftIndex) => draftIndex !== index));
+        syncDrafts(drafts.filter((_, draftIndex) => draftIndex !== index));
     };
 
     return (
@@ -33,7 +76,7 @@ const ExternalLinksEditor: React.FC<ExternalLinksEditorProps> = ({ links = [], o
             {drafts.length > 0 ? (
                 <div className="external-links-list">
                     {drafts.map((link, index) => (
-                        <div key={index} className="external-link-row">
+                        <div key={link.rowId} className="external-link-row">
                             <div className="external-link-grid">
                                 <input
                                     type="text"

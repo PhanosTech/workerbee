@@ -196,4 +196,15 @@ describe('database.ts test suite', () => {
         topicTasks = await db.getTopicTasks(Number(topicId));
         expect(topicTasks.map((task) => task.id)).toEqual([Number(taskBId)]);
     });
+
+    it('should reload from the current DB_PATH when the data directory changes', async () => {
+        await db.init();
+
+        vi.clearAllMocks();
+        process.env.DB_PATH = '/tmp/workbee_test_data_switched';
+
+        await db.reload();
+
+        expect(fsp.mkdir).toHaveBeenCalledWith('/tmp/workbee_test_data_switched', { recursive: true });
+    });
 });

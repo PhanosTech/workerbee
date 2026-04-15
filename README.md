@@ -49,6 +49,7 @@ If packaging fails with `Cannot create symbolic link` / `A required privilege is
 - Local data store: `workbee_data/`
   - Dev: stored in `workbee_data/` in the project root.
   - Electron production on Windows: stored in `%USERPROFILE%\workerbee\workbee_data` by default.
+  - Desktop app: open `Settings` to point WorkerBee at a different data folder. If the selected folder already contains WorkerBee JSON files, the app loads them immediately; otherwise it creates a new empty store there. The choice is persisted and reused after restart.
   - Electron production on Windows still checks the previous `%LOCALAPPDATA%\workerbee\workbee_data`, the older `%APPDATA%\WorkerBee\workbee_data`, and `workbee_data` next to the packaged executable as legacy fallbacks when the new home-directory location does not exist yet.
   - If you still have the old single-file format (`workbee.json`), the packaged app will auto-import it on first launch from `%USERPROFILE%\workerbee\workbee.json`, `%LOCALAPPDATA%\workerbee\workbee.json`, `%APPDATA%\WorkerBee\workbee.json`, or next to `WorkerBee.exe`, then rename the source file to `.bak`.
 
@@ -69,6 +70,7 @@ If packaging fails with `Cannot create symbolic link` / `A required privilege is
 ```
 
 - `dataDir` may be absolute or relative to the config file location.
+- The desktop `Settings` page updates this `dataDir` value for you when you choose a new data directory.
 - A default `%USERPROFILE%\workerbee\config.json` is created automatically on first packaged Windows launch when no config exists yet.
 - A template is included at `config.example.json` in the repo.
 

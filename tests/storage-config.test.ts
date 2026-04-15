@@ -2,7 +2,14 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { ensureConfigFile, resolveStorageConfig } from '../electron/storageConfig';
+import {
+    ensureConfigFile,
+    ensureDataDirectory,
+    inspectDataDirectory,
+    readDesktopConfig,
+    resolveStorageConfig,
+    writeDesktopConfig,
+} from '../electron/storageConfig';
 
 const tempDirs: string[] = [];
 
@@ -240,5 +247,37 @@ describe('ensureConfigFile', () => {
         expect(ensureConfigFile(configPath, { dataDir: 'C:/Workbee/data' })).toBe(true);
         expect(ensureConfigFile(configPath, { dataDir: 'C:/Other' })).toBe(false);
         expect(JSON.parse(fs.readFileSync(configPath, 'utf8'))).toEqual({ dataDir: 'C:/Workbee/data' });
+    });
+});
+
+describe('storage helpers', () => {
+    it('reads and writes desktop config files', () => {
+        const root = makeTempDir();
+        const configPath = path.join(root, 'workerbee', 'config.json');
+
+        writeDesktopConfig(configPath, { dataDir: '../portable-data' });
+
+        expect(readDesktopConfig(configPath)).toEqual({ dataDir: '../portable-data' });
+    });
+
+    it('inspects existing data directories and creates missing ones on demand', () => {
+        const root = makeTempDir();
+        const dataDir = path.join(root, 'moved-data');
+
+        const missingInspection = inspectDataDirectory(dataDir);
+        expect(missingInspection.exists).toBe(false);
+        expect(missingInspection.hasPersistedState).toBe(false);
+
+        const ensuredInspection = ensureDataDirectory(dataDir);
+        expect(ensuredInspection.exists).toBe(true);
+        expect(ensuredInspection.createdDirectory).toBe(true);
+        expect(fs.existsSync(dataDir)).toBe(true);
+
+        fs.writeFileSync(path.join(dataDir, 'meta.json'), '{}', 'utf8');
+        fs.writeFileSync(path.join(dataDir, 'tasks.json'), '[]', 'utf8');
+
+        const populatedInspection = inspectDataDirectory(dataDir);
+        expect(populatedInspection.hasPersistedState).toBe(true);
+        expect(populatedInspection.detectedFiles).toEqual(expect.arrayContaining(['meta.json', 'tasks.json']));
     });
 });

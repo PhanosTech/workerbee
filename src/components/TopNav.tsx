@@ -64,6 +64,13 @@ const TopNav: React.FC<TopNavProps> = ({ activeTab, setActiveTab, theme, setThem
                 >
                     Weekly
                 </button>
+                <button
+                    type="button"
+                    className={`topbar-tab ${activeTab === 'settings' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('settings')}
+                >
+                    Settings
+                </button>
             </nav>
 
             <div className="topbar-right">
